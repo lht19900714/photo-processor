@@ -1,5 +1,5 @@
 import type { Context, Next } from 'hono';
-import { verify } from 'jose';
+import { jwtVerify } from 'jose';
 import type { ApiResponse } from '@photo-processor/shared';
 
 const JWT_SECRET = new TextEncoder().encode(
@@ -23,7 +23,7 @@ export async function authMiddleware(c: Context, next: Next): Promise<Response |
     }
 
     const token = authHeader.substring(7);
-    const { payload } = await verify(token, JWT_SECRET);
+    const { payload } = await jwtVerify(token, JWT_SECRET);
 
     // Add user info to context
     c.set('userId', payload.userId);

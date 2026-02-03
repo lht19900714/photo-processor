@@ -588,6 +588,7 @@ __metadata:
     "@types/bcrypt": "npm:^5.0.2"
     "@types/better-sqlite3": "npm:^7.6.11"
     "@types/node": "npm:^22.10.0"
+    "@types/ws": "npm:^8.5.13"
     bcrypt: "npm:^5.1.1"
     better-sqlite3: "npm:^11.6.0"
     dotenv: "npm:^16.4.5"
@@ -597,6 +598,7 @@ __metadata:
     tsc-alias: "npm:^1.8.10"
     tsx: "npm:^4.19.0"
     typescript: "npm:^5.7.2"
+    ws: "npm:^8.18.0"
   languageName: unknown
   linkType: soft
 
@@ -867,6 +869,15 @@ __metadata:
   dependencies:
     undici-types: "npm:~6.21.0"
   checksum: 10c0/35c3c0916a983dd33ddd8710d868a2678192c2ff3c6677e1d348872b78b9911c929279579c78efac1c9e61958b3f61cc5d3e725aaa41462f16f531d381ff15e6
+  languageName: node
+  linkType: hard
+
+"@types/ws@npm:^8.5.13":
+  version: 8.18.1
+  resolution: "@types/ws@npm:8.18.1"
+  dependencies:
+    "@types/node": "npm:*"
+  checksum: 10c0/61aff1129143fcc4312f083bc9e9e168aa3026b7dd6e70796276dcfb2c8211c4292603f9c4864fae702f2ed86e4abd4d38aa421831c2fd7f856c931a481afbab
   languageName: node
   linkType: hard
 
@@ -3881,6 +3892,21 @@ __metadata:
   version: 1.0.2
   resolution: "wrappy@npm:1.0.2"
   checksum: 10c0/56fece1a4018c6a6c8e28fbc88c87e0fbf4ea8fd64fc6c63b18f4acc4bd13e0ad2515189786dd2c30d3eec9663d70f4ecf699330002f8ccb547e4a18231fc9f0
+  languageName: node
+  linkType: hard
+
+"ws@npm:^8.18.0":
+  version: 8.19.0
+  resolution: "ws@npm:8.19.0"
+  peerDependencies:
+    bufferutil: ^4.0.1
+    utf-8-validate: ">=5.0.2"
+  peerDependenciesMeta:
+    bufferutil:
+      optional: true
+    utf-8-validate:
+      optional: true
+  checksum: 10c0/4741d9b9bc3f9c791880882414f96e36b8b254e34d4b503279d6400d9a4b87a033834856dbdd94ee4b637944df17ea8afc4bce0ff4a1560d2166be8855da5b04
   languageName: node
   linkType: hard
 

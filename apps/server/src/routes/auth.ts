@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { sign, verify } from 'jose';
+import { SignJWT, jwtVerify } from 'jose';
 import bcrypt from 'bcrypt';
 import { getDatabase } from '../db/index.js';
 import type { ApiResponse, LoginInput, LoginResponse, User } from '@photo-processor/shared';
@@ -46,7 +46,7 @@ authRoutes.post('/login', async (c) => {
 
     // Generate JWT
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
-    const token = await new sign({ userId: user.id, username: user.username })
+    const token = await new SignJWT({ userId: user.id, username: user.username })
       .setProtectedHeader({ alg: 'HS256' })
       .setExpirationTime(JWT_EXPIRES_IN)
       .sign(JWT_SECRET);
@@ -86,7 +86,7 @@ authRoutes.get('/me', async (c) => {
     }
 
     const token = authHeader.substring(7);
-    const { payload } = await verify(token, JWT_SECRET);
+    const { payload } = await jwtVerify(token, JWT_SECRET);
 
     const db = getDatabase();
     const user = db

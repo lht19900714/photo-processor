@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import type { TaskConfig, TaskRuntimeStatus } from '@photo-processor/shared';
+import type { TaskConfig, TaskRuntimeStatus, CreateTaskInput } from '@photo-processor/shared';
 import { api } from '@/lib/api';
 
 export const useTaskStore = defineStore('task', () => {
@@ -32,7 +32,7 @@ export const useTaskStore = defineStore('task', () => {
     return null;
   }
 
-  async function createTask(input: Partial<TaskConfig>): Promise<TaskConfig | null> {
+  async function createTask(input: CreateTaskInput): Promise<TaskConfig | null> {
     const response = await api.post<TaskConfig>('/tasks', input);
     if (response.success && response.data) {
       tasks.value.unshift(response.data);

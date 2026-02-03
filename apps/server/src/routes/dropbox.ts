@@ -151,13 +151,13 @@ dropboxRoutes.get('/callback', async (c) => {
       return c.json<ApiResponse>({ success: false, error: 'Failed to exchange code for tokens' }, 500);
     }
 
-    const tokens: DropboxTokens = await tokenResponse.json();
+    const tokens = await tokenResponse.json() as DropboxTokens;
 
     // Get account info
     const accountResponse = await fetch('https://api.dropboxapi.com/2/users/get_current_account', {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${tokens.accessToken}`,
+        Authorization: `Bearer ${tokens.access_token}`,
       },
     });
 
@@ -165,7 +165,7 @@ dropboxRoutes.get('/callback', async (c) => {
     let accountEmail = null;
 
     if (accountResponse.ok) {
-      const accountData = await accountResponse.json();
+      const accountData = await accountResponse.json() as { name?: { display_name?: string }; email?: string };
       accountName = accountData.name?.display_name || null;
       accountEmail = accountData.email || null;
     }
@@ -181,7 +181,7 @@ dropboxRoutes.get('/callback', async (c) => {
       `INSERT INTO dropbox_credentials
       (refresh_token, account_id, account_name, account_email)
       VALUES (?, ?, ?, ?)`
-    ).run(tokens.refreshToken, tokens.accountId, accountName, accountEmail);
+    ).run(tokens.refresh_token, tokens.account_id, accountName, accountEmail);
 
     console.log(`✓ Dropbox connected: ${accountName} (${accountEmail})`);
 
@@ -239,13 +239,13 @@ dropboxRoutes.post('/test', authMiddleware, async (c) => {
       return c.json<ApiResponse>({ success: false, error: 'Failed to refresh access token' }, 500);
     }
 
-    const { access_token } = await tokenResponse.json();
+    const tokenData = await tokenResponse.json() as { access_token: string };
 
     // Test API call
     const accountResponse = await fetch('https://api.dropboxapi.com/2/users/get_current_account', {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${access_token}`,
+        Authorization: `Bearer ${tokenData.access_token}`,
       },
     });
 
@@ -253,7 +253,7 @@ dropboxRoutes.post('/test', authMiddleware, async (c) => {
       return c.json<ApiResponse>({ success: false, error: 'Dropbox API test failed' }, 500);
     }
 
-    const accountData = await accountResponse.json();
+    const accountData = await accountResponse.json() as { name?: { display_name?: string }; email?: string };
 
     return c.json<ApiResponse>({
       success: true,

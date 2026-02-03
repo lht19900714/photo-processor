@@ -19,12 +19,14 @@
     "dotenv": "^16.4.5",
     "hono": "^4.6.0",
     "jose": "^5.9.0",
-    "playwright": "^1.49.0"
+    "playwright": "^1.49.0",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/bcrypt": "^5.0.2",
     "@types/better-sqlite3": "^7.6.11",
     "@types/node": "^22.10.0",
+    "@types/ws": "^8.5.13",
     "tsc-alias": "^1.8.10",
     "tsx": "^4.19.0",
     "typescript": "^5.7.2"

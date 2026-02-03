@@ -1,4 +1,4 @@
-import { serve } from '@hono/node-server';
+import { createServer } from 'http';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
@@ -15,6 +15,12 @@ import { dropboxRoutes } from './routes/dropbox.js';
 
 // Import database initialization
 import { initDatabase } from './db/index.js';
+
+// Import WebSocket handler
+import { WSHandler } from './ws/handler.js';
+
+// Import task manager for graceful shutdown
+import { getTaskManager } from './services/task-manager.service.js';
 
 // Create Hono app
 const app = new Hono();
@@ -67,22 +73,94 @@ app.notFound((c) => {
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const HOST = process.env.HOST || '0.0.0.0';
 
+let wsHandler: WSHandler | null = null;
+
 async function main() {
   try {
     // Initialize database
     await initDatabase();
     console.log('✓ Database initialized');
 
-    // Start server
-    console.log(`🚀 Server starting on http://${HOST}:${PORT}`);
+    // Create HTTP server
+    const server = createServer(async (req, res) => {
+      // Convert Node.js request to Fetch API request
+      const url = `http://${req.headers.host}${req.url}`;
+      const headers = new Headers();
+      for (const [key, value] of Object.entries(req.headers)) {
+        if (value) {
+          headers.set(key, Array.isArray(value) ? value.join(', ') : value);
+        }
+      }
 
-    serve({
-      fetch: app.fetch,
-      port: PORT,
-      hostname: HOST,
+      // Read body for POST/PUT requests
+      let body: string | undefined;
+      if (req.method !== 'GET' && req.method !== 'HEAD') {
+        const chunks: Buffer[] = [];
+        for await (const chunk of req) {
+          chunks.push(chunk);
+        }
+        body = Buffer.concat(chunks).toString();
+      }
+
+      const request = new Request(url, {
+        method: req.method,
+        headers,
+        body: body || undefined,
+      });
+
+      // Handle with Hono
+      const response = await app.fetch(request);
+
+      // Write response
+      res.statusCode = response.status;
+      response.headers.forEach((value, key) => {
+        res.setHeader(key, value);
+      });
+
+      const responseBody = await response.text();
+      res.end(responseBody);
     });
 
-    console.log(`✓ Server running on http://${HOST}:${PORT}`);
+    // Initialize WebSocket handler
+    wsHandler = new WSHandler(server);
+    console.log('✓ WebSocket server initialized');
+
+    // Start server
+    server.listen(PORT, HOST, () => {
+      console.log(`🚀 Server running on http://${HOST}:${PORT}`);
+      console.log(`   WebSocket: ws://${HOST}:${PORT}/ws`);
+    });
+
+    // Graceful shutdown
+    const shutdown = async () => {
+      console.log('\n⏳ Shutting down gracefully...');
+
+      // Stop all running tasks
+      const taskManager = getTaskManager();
+      await taskManager.stopAllTasks();
+      console.log('✓ All tasks stopped');
+
+      // Close WebSocket
+      if (wsHandler) {
+        wsHandler.close();
+        console.log('✓ WebSocket server closed');
+      }
+
+      // Close HTTP server
+      server.close(() => {
+        console.log('✓ HTTP server closed');
+        process.exit(0);
+      });
+
+      // Force exit after timeout
+      setTimeout(() => {
+        console.error('⚠️ Forced shutdown');
+        process.exit(1);
+      }, 10000);
+    };
+
+    process.on('SIGTERM', shutdown);
+    process.on('SIGINT', shutdown);
   } catch (error) {
     console.error('Failed to start server:', error);
     process.exit(1);

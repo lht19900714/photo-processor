@@ -9,7 +9,6 @@ import {
   NPopconfirm,
   NTag,
   useMessage,
-  useDialog,
   NModal,
   NForm,
   NFormItem,
@@ -22,7 +21,6 @@ import type { TaskConfig, CreateTaskInput } from '@photo-processor/shared';
 
 const router = useRouter();
 const message = useMessage();
-const dialog = useDialog();
 const taskStore = useTaskStore();
 
 const loading = ref(true);

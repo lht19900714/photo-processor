@@ -1,13 +1,13 @@
 import { Hono } from 'hono';
 import { getDatabase } from '../db/index.js';
 import { authMiddleware } from '../middleware/auth.js';
+import { getTaskManager } from '../services/task-manager.service.js';
 import type {
   ApiResponse,
   TaskConfig,
   CreateTaskInput,
   UpdateTaskInput,
   TaskRuntimeStatus,
-  DEFAULT_TASK_CONFIG,
 } from '@photo-processor/shared';
 
 export const taskRoutes = new Hono();
@@ -231,7 +231,7 @@ taskRoutes.delete('/:id', (c) => {
 });
 
 // Start task
-taskRoutes.post('/:id/start', (c) => {
+taskRoutes.post('/:id/start', async (c) => {
   try {
     const id = parseInt(c.req.param('id'), 10);
     const db = getDatabase();
@@ -241,21 +241,21 @@ taskRoutes.post('/:id/start', (c) => {
       return c.json<ApiResponse>({ success: false, error: 'Task not found' }, 404);
     }
 
-    // TODO: Implement task start logic with TaskManager
-    db.prepare('UPDATE task_configs SET is_active = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(id);
+    const taskManager = getTaskManager();
+    await taskManager.startTask(id);
 
     return c.json<ApiResponse>({
       success: true,
       message: 'Task started',
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Start task error:', error);
-    return c.json<ApiResponse>({ success: false, error: 'Failed to start task' }, 500);
+    return c.json<ApiResponse>({ success: false, error: error.message || 'Failed to start task' }, 500);
   }
 });
 
 // Stop task
-taskRoutes.post('/:id/stop', (c) => {
+taskRoutes.post('/:id/stop', async (c) => {
   try {
     const id = parseInt(c.req.param('id'), 10);
     const db = getDatabase();
@@ -265,16 +265,16 @@ taskRoutes.post('/:id/stop', (c) => {
       return c.json<ApiResponse>({ success: false, error: 'Task not found' }, 404);
     }
 
-    // TODO: Implement task stop logic with TaskManager
-    db.prepare('UPDATE task_configs SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(id);
+    const taskManager = getTaskManager();
+    await taskManager.stopTask(id);
 
     return c.json<ApiResponse>({
       success: true,
       message: 'Task stopped',
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Stop task error:', error);
-    return c.json<ApiResponse>({ success: false, error: 'Failed to stop task' }, 500);
+    return c.json<ApiResponse>({ success: false, error: error.message || 'Failed to stop task' }, 500);
   }
 });
 
@@ -282,37 +282,13 @@ taskRoutes.post('/:id/stop', (c) => {
 taskRoutes.get('/:id/status', (c) => {
   try {
     const id = parseInt(c.req.param('id'), 10);
-    const db = getDatabase();
 
-    const task = db.prepare('SELECT * FROM task_configs WHERE id = ?').get(id) as any;
-    if (!task) {
+    const taskManager = getTaskManager();
+    const status = taskManager.getTaskStatus(id);
+
+    if (!status) {
       return c.json<ApiResponse>({ success: false, error: 'Task not found' }, 404);
     }
-
-    // Get download stats
-    const stats = db
-      .prepare(
-        `SELECT
-          COUNT(*) as total,
-          MAX(downloaded_at) as last_download
-        FROM download_history WHERE task_id = ?`
-      )
-      .get(id) as { total: number; last_download: string | null };
-
-    const status: TaskRuntimeStatus = {
-      taskId: id,
-      status: task.is_active ? 'running' : 'idle',
-      currentCycle: 0, // TODO: Get from TaskManager
-      lastCheckAt: null, // TODO: Get from TaskManager
-      nextCheckAt: null, // TODO: Get from TaskManager
-      error: null,
-      stats: {
-        totalPhotos: 0, // TODO: Get from TaskManager
-        downloadedPhotos: stats.total,
-        failedPhotos: 0,
-        lastDownloadAt: stats.last_download,
-      },
-    };
 
     return c.json<ApiResponse<TaskRuntimeStatus>>({
       success: true,
