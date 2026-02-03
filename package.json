@@ -1,0 +1,26 @@
+{
+  "name": "photo-processor",
+  "version": "1.0.0",
+  "private": true,
+  "packageManager": "yarn@4.6.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "start": "turbo run start",
+    "lint": "turbo run lint",
+    "type-check": "turbo run type-check",
+    "clean": "turbo run clean && rm -rf node_modules",
+    "dev:server": "turbo run dev --filter=@photo-processor/server",
+    "dev:web": "turbo run dev --filter=@photo-processor/web",
+    "build:server": "turbo run build --filter=@photo-processor/server",
+    "build:web": "turbo run build --filter=@photo-processor/web"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.0",
+    "typescript": "^5.7.2"
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "name": "@photo-processor/server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc && tsc-alias",
+    "start": "node dist/index.js",
+    "clean": "rm -rf dist",
+    "type-check": "tsc --noEmit",
+    "db:migrate": "tsx src/db/migrate.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.0",
+    "@photo-processor/shared": "workspace:*",
+    "bcrypt": "^5.1.1",
+    "better-sqlite3": "^11.6.0",
+    "dotenv": "^16.4.5",
+    "hono": "^4.6.0",
+    "jose": "^5.9.0",
+    "playwright": "^1.49.0"
+  },
+  "devDependencies": {
+    "@types/bcrypt": "^5.0.2",
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/node": "^22.10.0",
+    "tsc-alias": "^1.8.10",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.2"
+  }
+}
