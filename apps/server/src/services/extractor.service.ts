@@ -22,6 +22,14 @@ interface ExtractorConfig {
   pageRenderWait: number;
 }
 
+/**
+ * Default configuration matching Python config.py exactly:
+ * - SCROLL_PAUSE_TIME = 2 (seconds)
+ * - MAX_SCROLL_ATTEMPTS = 50
+ * - PHOTO_DETAIL_LOAD_WAIT = 1000 (ms)
+ * - PHOTO_CLOSE_WAIT = 500 (ms)
+ * - PAGE_RENDER_WAIT = 3000 (ms)
+ */
 const DEFAULT_CONFIG: ExtractorConfig = {
   headless: true,
   timeout: 30000,
@@ -30,11 +38,11 @@ const DEFAULT_CONFIG: ExtractorConfig = {
     photoClick: 'span',
     viewOriginal: 'div.operate-buttons li.row-all-center a',
   },
-  scrollPauseTime: 1000,
-  maxScrollAttempts: 50,
-  photoDetailLoadWait: 1500,
-  photoCloseWait: 500,
-  pageRenderWait: 2000,
+  scrollPauseTime: 2000,        // Python: SCROLL_PAUSE_TIME = 2 (seconds)
+  maxScrollAttempts: 50,        // Python: MAX_SCROLL_ATTEMPTS = 50
+  photoDetailLoadWait: 1000,    // Python: PHOTO_DETAIL_LOAD_WAIT = 1000
+  photoCloseWait: 500,          // Python: PHOTO_CLOSE_WAIT = 500
+  pageRenderWait: 3000,         // Python: PAGE_RENDER_WAIT = 3000
 };
 
 /**

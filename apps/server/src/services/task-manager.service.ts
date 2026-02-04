@@ -216,9 +216,9 @@ export class TaskManager {
     this.logTaskEvent(taskId, 'info', `Task started: ${config.name}`);
 
     // Start the task loop
-    this.runTaskLoop(runningTask).catch((error) => {
+    this.runTaskLoop(runningTask).catch(async (error) => {
       console.error('Task loop error:', error);
-      this.handleTaskError(taskId, error);
+      await this.handleTaskError(taskId, error);
     });
   }
 
@@ -295,12 +295,20 @@ export class TaskManager {
 
   /**
    * Handle task error
+   * Ensures browser resources are always cleaned up
    */
-  private handleTaskError(taskId: number, error: Error): void {
+  private async handleTaskError(taskId: number, error: Error): Promise<void> {
     const runningTask = this.runningTasks.get(taskId);
     if (runningTask) {
       runningTask.status = 'error';
       runningTask.error = error.message;
+
+      // Ensure browser is closed even if stopTask fails
+      try {
+        await runningTask.extractor.close();
+      } catch (closeError) {
+        console.error('Failed to close browser:', closeError);
+      }
     }
 
     this.emit({
@@ -313,7 +321,13 @@ export class TaskManager {
     this.logTaskEvent(taskId, 'error', `Task error: ${error.message}`);
 
     // Try to stop the task gracefully
-    this.stopTask(taskId, `Error: ${error.message}`).catch(console.error);
+    try {
+      await this.stopTask(taskId, `Error: ${error.message}`);
+    } catch (stopError) {
+      console.error('Failed to stop task gracefully:', stopError);
+      // Ensure task is removed from running tasks
+      this.runningTasks.delete(taskId);
+    }
   }
 
   /**

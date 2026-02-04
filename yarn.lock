@@ -592,6 +592,7 @@ __metadata:
     bcrypt: "npm:^5.1.1"
     better-sqlite3: "npm:^11.6.0"
     dotenv: "npm:^16.4.5"
+    dropbox: "npm:^10.34.0"
     hono: "npm:^4.6.0"
     jose: "npm:^5.9.0"
     playwright: "npm:^1.49.0"
@@ -1538,6 +1539,17 @@ __metadata:
   version: 16.6.1
   resolution: "dotenv@npm:16.6.1"
   checksum: 10c0/15ce56608326ea0d1d9414a5c8ee6dcf0fffc79d2c16422b4ac2268e7e2d76ff5a572d37ffe747c377de12005f14b3cc22361e79fc7f1061cce81f77d2c973dc
+  languageName: node
+  linkType: hard
+
+"dropbox@npm:^10.34.0":
+  version: 10.34.0
+  resolution: "dropbox@npm:10.34.0"
+  dependencies:
+    node-fetch: "npm:^2.6.1"
+  peerDependencies:
+    "@types/node-fetch": ^2.5.7
+  checksum: 10c0/222d0f021a63719b2a449a6e9226a03cad4be9005808551e69eaba57f58c4d4f1689284ca7791e6f63be37feecde06d34a43b72c9ea3a0445c16528d4f7d95dc
   languageName: node
   linkType: hard
 
@@ -2587,7 +2599,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"node-fetch@npm:^2.6.7":
+"node-fetch@npm:^2.6.1, node-fetch@npm:^2.6.7":
   version: 2.7.0
   resolution: "node-fetch@npm:2.7.0"
   dependencies:

@@ -1,3 +1,4 @@
+import { Dropbox } from 'dropbox';
 import { getDatabase } from '../db/index.js';
 
 interface DropboxCredentials {
@@ -7,20 +8,55 @@ interface DropboxCredentials {
   accountEmail: string | null;
 }
 
-interface AccessTokenCache {
-  token: string;
-  expiresAt: number;
+// Retry configuration (matching Python's MAX_DOWNLOAD_RETRIES)
+const MAX_RETRIES = 5;
+const RETRY_DELAY_MS = 2000;
+
+/**
+ * Helper function for retry with exponential backoff
+ */
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  maxRetries: number = MAX_RETRIES,
+  delayMs: number = RETRY_DELAY_MS
+): Promise<T> {
+  let lastError: Error | undefined;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+
+      if (attempt < maxRetries) {
+        console.warn(
+          `Attempt ${attempt}/${maxRetries} failed: ${lastError.message}. Retrying in ${delayMs * attempt}ms...`
+        );
+        await new Promise((resolve) => setTimeout(resolve, delayMs * attempt));
+      }
+    }
+  }
+
+  throw lastError;
 }
 
 /**
- * Dropbox service for file uploads with automatic token refresh
+ * Dropbox service using official SDK with automatic token refresh
+ *
+ * Based on Python implementation:
+ * - Uses official dropbox SDK
+ * - Supports refresh_token + app_key authentication
+ * - Auto token refresh handled by SDK
  */
 export class DropboxService {
-  private accessTokenCache: AccessTokenCache | null = null;
+  private client: Dropbox | null = null;
   private appKey: string;
+  private appSecret: string;
 
   constructor() {
     this.appKey = process.env.DROPBOX_APP_KEY || '';
+    this.appSecret = process.env.DROPBOX_APP_SECRET || '';
+
     if (!this.appKey) {
       console.warn('DROPBOX_APP_KEY not configured');
     }
@@ -41,7 +77,12 @@ export class DropboxService {
     const db = getDatabase();
     const row = db
       .prepare('SELECT * FROM dropbox_credentials ORDER BY id DESC LIMIT 1')
-      .get() as any;
+      .get() as {
+        refresh_token: string;
+        account_id: string | null;
+        account_name: string | null;
+        account_email: string | null;
+      } | undefined;
 
     if (!row) {
       return null;
@@ -56,146 +97,107 @@ export class DropboxService {
   }
 
   /**
-   * Get a valid access token (auto-refresh if expired)
+   * Get or create Dropbox client instance
+   * SDK handles token refresh automatically when configured with refreshToken
    */
-  async getAccessToken(): Promise<string> {
-    // Check cache (with 5 minute buffer)
-    if (this.accessTokenCache) {
-      const bufferMs = 5 * 60 * 1000;
-      if (Date.now() < this.accessTokenCache.expiresAt - bufferMs) {
-        return this.accessTokenCache.token;
-      }
+  private getClient(): Dropbox {
+    if (this.client) {
+      return this.client;
     }
 
-    // Refresh token
     const credentials = this.getCredentials();
     if (!credentials) {
       throw new Error('Dropbox not connected');
     }
 
-    const response = await fetch('https://api.dropbox.com/oauth2/token', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({
-        grant_type: 'refresh_token',
-        refresh_token: credentials.refreshToken,
-        client_id: this.appKey,
-      }),
+    // Initialize with refresh token - SDK handles auto-refresh
+    // This matches Python: dropbox.Dropbox(oauth2_refresh_token=..., app_key=..., app_secret=...)
+    this.client = new Dropbox({
+      clientId: this.appKey,
+      clientSecret: this.appSecret || undefined,
+      refreshToken: credentials.refreshToken,
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Token refresh failed:', errorText);
-      throw new Error('Failed to refresh Dropbox access token');
-    }
-
-    const data = await response.json() as { access_token: string; expires_in: number };
-
-    // Cache the new token
-    this.accessTokenCache = {
-      token: data.access_token,
-      expiresAt: Date.now() + data.expires_in * 1000,
-    };
-
-    return this.accessTokenCache.token;
+    return this.client;
   }
 
   /**
-   * Upload a file to Dropbox
+   * Reset client (force re-initialization on next call)
+   */
+  resetClient(): void {
+    this.client = null;
+  }
+
+  /**
+   * Upload a file to Dropbox with retry
+   * Matches Python: dropbox_client.files_upload(content, dropbox_file_path, mode=dropbox.files.WriteMode.overwrite)
    */
   async uploadFile(
     path: string,
     data: Buffer,
-    options?: { autorename?: boolean }
+    options?: { autorename?: boolean; overwrite?: boolean }
   ): Promise<{ path: string; size: number }> {
-    const accessToken = await this.getAccessToken();
+    const client = this.getClient();
 
     // Ensure path starts with /
     const fullPath = path.startsWith('/') ? path : `/${path}`;
 
-    const response = await fetch('https://content.dropboxapi.com/2/files/upload', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Dropbox-API-Arg': JSON.stringify({
-          path: fullPath,
-          mode: 'overwrite',
-          autorename: options?.autorename ?? false,
-          mute: true,
-        }),
-        'Content-Type': 'application/octet-stream',
-      },
-      body: data,
+    const result = await withRetry(async () => {
+      const response = await client.filesUpload({
+        path: fullPath,
+        contents: data,
+        mode: options?.overwrite !== false
+          ? { '.tag': 'overwrite' }
+          : { '.tag': 'add' },
+        autorename: options?.autorename ?? false,
+        mute: true,
+      });
+
+      return response.result;
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Upload failed:', errorText);
-      throw new Error(`Failed to upload file to Dropbox: ${fullPath}`);
-    }
-
-    const result = await response.json() as { path_display: string; size: number };
+    console.log(`✓ Uploaded to Dropbox: ${result.path_display}`);
 
     return {
-      path: result.path_display,
+      path: result.path_display || fullPath,
       size: result.size,
     };
   }
 
   /**
    * Ensure a folder exists in Dropbox
+   * Matches Python: ensure_dropbox_path()
    */
   async ensureFolder(path: string): Promise<boolean> {
-    const accessToken = await this.getAccessToken();
+    const client = this.getClient();
 
     // Ensure path starts with /
     const fullPath = path.startsWith('/') ? path : `/${path}`;
 
     try {
       // Try to get folder metadata
-      const metaResponse = await fetch(
-        'https://api.dropboxapi.com/2/files/get_metadata',
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ path: fullPath }),
-        }
-      );
-
-      if (metaResponse.ok) {
-        return true; // Folder exists
-      }
-
-      // Folder doesn't exist, create it
-      const createResponse = await fetch(
-        'https://api.dropboxapi.com/2/files/create_folder_v2',
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ path: fullPath, autorename: false }),
-        }
-      );
-
-      if (!createResponse.ok) {
-        const errorText = await createResponse.text();
-        // Ignore "folder already exists" error
-        if (!errorText.includes('conflict')) {
-          console.error('Create folder failed:', errorText);
+      await client.filesGetMetadata({ path: fullPath });
+      console.log(`Dropbox folder exists: ${fullPath}`);
+      return true;
+    } catch (error) {
+      // Folder doesn't exist, try to create it
+      if (this.isPathNotFoundError(error)) {
+        try {
+          await client.filesCreateFolderV2({
+            path: fullPath,
+            autorename: false,
+          });
+          console.log(`✓ Created Dropbox folder: ${fullPath}`);
+          return true;
+        } catch (createError) {
+          // Ignore "folder already exists" conflict error
+          if (this.isConflictError(createError)) {
+            return true;
+          }
+          console.error('Create folder failed:', createError);
           return false;
         }
       }
-
-      console.log(`✓ Created Dropbox folder: ${fullPath}`);
-      return true;
-    } catch (error) {
       console.error('Ensure folder error:', error);
       return false;
     }
@@ -203,33 +205,84 @@ export class DropboxService {
 
   /**
    * Get account info
+   * Matches Python: client.users_get_current_account()
    */
   async getAccountInfo(): Promise<{ name: string; email: string } | null> {
     try {
-      const accessToken = await this.getAccessToken();
+      const client = this.getClient();
+      const response = await client.usersGetCurrentAccount();
+      const account = response.result;
 
-      const response = await fetch(
-        'https://api.dropboxapi.com/2/users/get_current_account',
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-        }
-      );
-
-      if (!response.ok) {
-        return null;
-      }
-
-      const data = await response.json() as { name?: { display_name?: string }; email?: string };
       return {
-        name: data.name?.display_name || 'Unknown',
-        email: data.email || 'Unknown',
+        name: account.name?.display_name || 'Unknown',
+        email: account.email || 'Unknown',
       };
-    } catch {
+    } catch (error) {
+      console.error('Get account info failed:', error);
       return null;
     }
+  }
+
+  /**
+   * List files in a folder (for deduplication)
+   * Matches Python: get_existing_files()
+   */
+  async listFolder(path: string): Promise<Set<string>> {
+    const client = this.getClient();
+    const existing = new Set<string>();
+
+    // Ensure path starts with /
+    const fullPath = path.startsWith('/') ? path : `/${path}`;
+
+    try {
+      let response = await client.filesListFolder({ path: fullPath });
+
+      while (true) {
+        for (const entry of response.result.entries) {
+          existing.add(entry.name.toLowerCase());
+        }
+
+        if (!response.result.has_more) {
+          break;
+        }
+
+        response = await client.filesListFolderContinue({
+          cursor: response.result.cursor,
+        });
+      }
+    } catch (error) {
+      if (this.isPathNotFoundError(error)) {
+        console.log(`Dropbox folder ${fullPath} does not exist, will be created`);
+      } else {
+        console.warn(`Warning: Could not list Dropbox folder ${fullPath}:`, error);
+      }
+    }
+
+    return existing;
+  }
+
+  /**
+   * Check if error is a "path not found" error
+   */
+  private isPathNotFoundError(error: unknown): boolean {
+    if (error && typeof error === 'object') {
+      const errorObj = error as { error?: { error_summary?: string } };
+      const summary = errorObj.error?.error_summary || String(error);
+      return summary.includes('path/not_found') || summary.includes('not_found');
+    }
+    return false;
+  }
+
+  /**
+   * Check if error is a conflict error (folder already exists)
+   */
+  private isConflictError(error: unknown): boolean {
+    if (error && typeof error === 'object') {
+      const errorObj = error as { error?: { error_summary?: string } };
+      const summary = errorObj.error?.error_summary || String(error);
+      return summary.includes('conflict') || summary.includes('folder_conflict');
+    }
+    return false;
   }
 }
 
@@ -241,4 +294,14 @@ export function getDropboxService(): DropboxService {
     dropboxServiceInstance = new DropboxService();
   }
   return dropboxServiceInstance;
+}
+
+/**
+ * Reset the singleton instance (useful for testing or reconnection)
+ */
+export function resetDropboxService(): void {
+  if (dropboxServiceInstance) {
+    dropboxServiceInstance.resetClient();
+  }
+  dropboxServiceInstance = null;
 }

@@ -1,7 +1,8 @@
 import { getDropboxService } from './dropbox.service.js';
 import type { PhotoWithUrl } from '@photo-processor/shared';
 
-const MAX_RETRIES = 3;
+// Retry configuration (matching Python's MAX_DOWNLOAD_RETRIES = 5)
+const MAX_RETRIES = 5;
 const RETRY_DELAY = 2000;
 
 interface DownloadResult {
