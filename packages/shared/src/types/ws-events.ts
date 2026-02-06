@@ -7,6 +7,9 @@ export type ServerWSEvent =
   | TaskStartedEvent
   | TaskStoppedEvent
   | TaskErrorEvent
+  | TaskRecoveringEvent
+  | TaskRecoveredEvent
+  | DropboxAuthErrorEvent
   | ScanStartedEvent
   | ScanProgressEvent
   | ScanCompletedEvent
@@ -33,6 +36,28 @@ export interface TaskErrorEvent {
   type: 'task:error';
   taskId: number;
   error: string;
+  timestamp: string;
+}
+
+export interface TaskRecoveringEvent {
+  type: 'task:recovering';
+  taskId: number;
+  errorType: string;
+  attempt: number;
+  maxRetries: number;
+  delayMs: number;
+  timestamp: string;
+}
+
+export interface TaskRecoveredEvent {
+  type: 'task:recovered';
+  taskId: number;
+  timestamp: string;
+}
+
+export interface DropboxAuthErrorEvent {
+  type: 'dropbox:authError';
+  message: string;
   timestamp: string;
 }
 

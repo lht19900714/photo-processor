@@ -31,6 +31,11 @@ const router = createRouter({
           component: () => import('@/pages/TaskDetail.vue'),
         },
         {
+          path: 'tasks/:id/logs',
+          name: 'TaskLogs',
+          component: () => import('@/pages/TaskLogs.vue'),
+        },
+        {
           path: 'photos',
           name: 'Photos',
           component: () => import('@/pages/Photos.vue'),

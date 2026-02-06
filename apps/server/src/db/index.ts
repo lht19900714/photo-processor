@@ -128,6 +128,20 @@ function runMigrations(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_task_logs_created_at ON task_logs(created_at);
   `);
 
+  // Migration: Add access_token and expires_at columns to dropbox_credentials for token caching
+  const dropboxColumns = db.prepare("PRAGMA table_info(dropbox_credentials)").all() as { name: string }[];
+  const dropboxColumnNames = dropboxColumns.map(c => c.name);
+
+  if (!dropboxColumnNames.includes('access_token')) {
+    db.exec("ALTER TABLE dropbox_credentials ADD COLUMN access_token TEXT");
+    console.log('✓ Migration: Added access_token column to dropbox_credentials');
+  }
+
+  if (!dropboxColumnNames.includes('expires_at')) {
+    db.exec("ALTER TABLE dropbox_credentials ADD COLUMN expires_at DATETIME");
+    console.log('✓ Migration: Added expires_at column to dropbox_credentials');
+  }
+
   // Reset running tasks to idle on startup (they were interrupted by server restart)
   const resetResult = db.prepare("UPDATE task_configs SET is_active = 0 WHERE is_active = 1").run();
   if (resetResult.changes > 0) {

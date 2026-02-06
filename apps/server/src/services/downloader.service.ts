@@ -1,9 +1,11 @@
 import { getDropboxService } from './dropbox.service.js';
+import { calculateDelay, sleep } from '../utils/retry.js';
 import type { PhotoWithUrl } from '@photo-processor/shared';
 
-// Retry configuration (matching Python's MAX_DOWNLOAD_RETRIES = 5)
+// Retry configuration
 const MAX_RETRIES = 5;
-const RETRY_DELAY = 2000;
+const BASE_DELAY = 1000;  // 1 second base delay
+const MAX_DELAY = 30000;  // 30 seconds max delay
 
 interface DownloadResult {
   success: boolean;
@@ -92,11 +94,14 @@ export class PhotoDownloader {
         const errorMessage = error instanceof Error ? error.message : String(error);
 
         if (attempt < MAX_RETRIES) {
+          // Calculate exponential backoff delay with jitter
+          const delay = calculateDelay(attempt, BASE_DELAY, MAX_DELAY);
+
           this.log(
             'warn',
-            `Download failed (attempt ${attempt}/${MAX_RETRIES}): ${photo.filename} - ${errorMessage}`
+            `Download failed (attempt ${attempt}/${MAX_RETRIES}): ${photo.filename} - ${errorMessage}. Retrying in ${delay}ms...`
           );
-          await this.delay(RETRY_DELAY);
+          await sleep(delay);
         } else {
           this.log(
             'error',
@@ -154,9 +159,5 @@ export class PhotoDownloader {
       failed: failedCount,
       results,
     };
-  }
-
-  private delay(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 }

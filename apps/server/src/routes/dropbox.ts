@@ -170,18 +170,28 @@ dropboxRoutes.get('/callback', async (c) => {
       accountEmail = accountData.email || null;
     }
 
+    // Calculate token expiry time
+    const expiresAt = new Date(Date.now() + tokens.expires_in * 1000);
+
     // Save to database
     const db = getDatabase();
 
     // Delete existing credentials
     db.prepare('DELETE FROM dropbox_credentials').run();
 
-    // Insert new credentials
+    // Insert new credentials with access_token and expires_at
     db.prepare(
       `INSERT INTO dropbox_credentials
-      (refresh_token, account_id, account_name, account_email)
-      VALUES (?, ?, ?, ?)`
-    ).run(tokens.refresh_token, tokens.account_id, accountName, accountEmail);
+      (refresh_token, access_token, expires_at, account_id, account_name, account_email)
+      VALUES (?, ?, ?, ?, ?, ?)`
+    ).run(
+      tokens.refresh_token,
+      tokens.access_token,
+      expiresAt.toISOString(),
+      tokens.account_id,
+      accountName,
+      accountEmail
+    );
 
     console.log(`✓ Dropbox connected: ${accountName} (${accountEmail})`);
 

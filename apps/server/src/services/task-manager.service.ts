@@ -2,12 +2,42 @@ import { PhotoExtractor } from './extractor.service.js';
 import { PhotoDownloader } from './downloader.service.js';
 import { getDropboxService } from './dropbox.service.js';
 import { getDatabase } from '../db/index.js';
+import { calculateDelay, sleep } from '../utils/retry.js';
 import type {
   TaskConfig,
   TaskStatus,
   TaskRuntimeStatus,
   ServerWSEvent,
 } from '@photo-processor/shared';
+
+/**
+ * 任务错误类型分类
+ */
+enum TaskErrorType {
+  BROWSER_CRASHED = 'browser_crashed',     // 可恢复
+  BROWSER_TIMEOUT = 'browser_timeout',     // 可恢复
+  NETWORK_ERROR = 'network_error',         // 可恢复
+  DROPBOX_AUTH = 'dropbox_auth',           // 需用户干预
+  DROPBOX_QUOTA = 'dropbox_quota',         // 致命
+  UNKNOWN = 'unknown',                      // 可尝试恢复
+}
+
+const RECOVERABLE_ERRORS = new Set([
+  TaskErrorType.BROWSER_CRASHED,
+  TaskErrorType.BROWSER_TIMEOUT,
+  TaskErrorType.NETWORK_ERROR,
+  TaskErrorType.UNKNOWN,
+]);
+
+/**
+ * 恢复事件记录
+ */
+interface RecoveryEvent {
+  timestamp: Date;
+  errorType: TaskErrorType;
+  recovered: boolean;
+  attempt: number;
+}
 
 interface RunningTask {
   taskId: number;
@@ -19,9 +49,37 @@ interface RunningTask {
   lastCheckAt: Date | null;
   nextCheckAt: Date | null;
   error: string | null;
+  retryCount: number;              // 当前恢复次数
+  maxRetries: number;              // 最大恢复次数 (默认 3)
+  lastErrorAt: Date | null;        // 最后错误时间
+  recoveryHistory: RecoveryEvent[];// 恢复历史
 }
 
 type EventCallback = (event: ServerWSEvent) => void;
+
+/**
+ * 分类任务错误类型
+ */
+function classifyTaskError(error: Error): TaskErrorType {
+  const message = error.message.toLowerCase();
+
+  if (message.includes('target closed') || message.includes('browser disconnected')) {
+    return TaskErrorType.BROWSER_CRASHED;
+  }
+  if (message.includes('timeout')) {
+    return TaskErrorType.BROWSER_TIMEOUT;
+  }
+  if (message.includes('fetch failed') || message.includes('network') || message.includes('econnreset')) {
+    return TaskErrorType.NETWORK_ERROR;
+  }
+  if (message.includes('invalid_access_token') || message.includes('expired_access_token')) {
+    return TaskErrorType.DROPBOX_AUTH;
+  }
+  if (message.includes('insufficient_space')) {
+    return TaskErrorType.DROPBOX_QUOTA;
+  }
+  return TaskErrorType.UNKNOWN;
+}
 
 /**
  * TaskManager - Manages task lifecycle and scheduling
@@ -198,6 +256,10 @@ export class TaskManager {
       lastCheckAt: null,
       nextCheckAt: null,
       error: null,
+      retryCount: 0,
+      maxRetries: 3,
+      lastErrorAt: null,
+      recoveryHistory: [],
     };
 
     this.runningTasks.set(taskId, runningTask);
@@ -300,10 +362,136 @@ export class TaskManager {
   }
 
   /**
+   * 尝试恢复任务
+   * @returns 是否恢复成功
+   */
+  private async attemptRecovery(taskId: number, error: Error): Promise<boolean> {
+    const runningTask = this.runningTasks.get(taskId);
+    if (!runningTask) {
+      return false;
+    }
+
+    // 分类错误类型
+    const errorType = classifyTaskError(error);
+
+    // 检查是否可恢复
+    if (!RECOVERABLE_ERRORS.has(errorType)) {
+      this.logTaskEvent(
+        taskId,
+        'error',
+        `错误类型 ${errorType} 不可恢复，任务将停止`
+      );
+      return false;
+    }
+
+    // 检查重试次数
+    if (runningTask.retryCount >= runningTask.maxRetries) {
+      this.logTaskEvent(
+        taskId,
+        'error',
+        `已达到最大重试次数 (${runningTask.maxRetries})，任务将停止`
+      );
+      return false;
+    }
+
+    // 增加重试计数
+    runningTask.retryCount++;
+    runningTask.lastErrorAt = new Date();
+
+    // 计算退避延迟
+    const delayMs = calculateDelay(runningTask.retryCount);
+
+    // 记录恢复尝试
+    this.logTaskEvent(
+      taskId,
+      'warn',
+      `尝试恢复任务 (${runningTask.retryCount}/${runningTask.maxRetries}): ${errorType}, 等待 ${delayMs}ms`,
+      { errorType, attempt: runningTask.retryCount, delayMs }
+    );
+
+    // 发送恢复事件
+    this.emit({
+      type: 'task:recovering',
+      taskId,
+      errorType,
+      attempt: runningTask.retryCount,
+      maxRetries: runningTask.maxRetries,
+      delayMs,
+      timestamp: new Date().toISOString(),
+    });
+
+    try {
+      // 等待退避延迟
+      await sleep(delayMs);
+
+      // 重新初始化浏览器
+      await runningTask.extractor.reinitialize();
+
+      // 重新导航到目标页面
+      await runningTask.extractor.navigateTo(runningTask.config.targetUrl);
+
+      // 记录恢复成功
+      runningTask.recoveryHistory.push({
+        timestamp: new Date(),
+        errorType,
+        recovered: true,
+        attempt: runningTask.retryCount,
+      });
+
+      this.logTaskEvent(
+        taskId,
+        'info',
+        `任务恢复成功 (尝试 ${runningTask.retryCount}/${runningTask.maxRetries})`
+      );
+
+      // 重置错误状态
+      runningTask.error = null;
+      runningTask.status = 'running';
+
+      return true;
+    } catch (recoveryError) {
+      // 记录恢复失败
+      runningTask.recoveryHistory.push({
+        timestamp: new Date(),
+        errorType,
+        recovered: false,
+        attempt: runningTask.retryCount,
+      });
+
+      this.logTaskEvent(
+        taskId,
+        'error',
+        `任务恢复失败: ${recoveryError instanceof Error ? recoveryError.message : String(recoveryError)}`
+      );
+
+      return false;
+    }
+  }
+
+  /**
    * Handle task error
    * Ensures browser resources are always cleaned up
    */
   private async handleTaskError(taskId: number, error: Error): Promise<void> {
+    console.error('Task error:', error);
+
+    // 首先尝试恢复任务
+    const recovered = await this.attemptRecovery(taskId, error);
+
+    if (recovered) {
+      // 恢复成功，重新启动任务循环
+      const runningTask = this.runningTasks.get(taskId);
+      if (runningTask) {
+        this.logTaskEvent(taskId, 'info', '重新启动任务循环');
+        this.runTaskLoop(runningTask).catch(async (loopError) => {
+          console.error('Task loop error after recovery:', loopError);
+          await this.handleTaskError(taskId, loopError);
+        });
+      }
+      return;
+    }
+
+    // 恢复失败，停止任务
     const runningTask = this.runningTasks.get(taskId);
     if (runningTask) {
       runningTask.status = 'error';

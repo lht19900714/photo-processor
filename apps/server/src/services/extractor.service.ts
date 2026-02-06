@@ -52,6 +52,7 @@ export interface ExtractorEvents {
   onLog?: (level: 'info' | 'warn' | 'error', message: string) => void;
   onScanProgress?: (scanned: number, total: number) => void;
   onPhotoFound?: (photo: PhotoInfo) => void;
+  onBrowserDisconnected?: () => void;
 }
 
 /**
@@ -98,6 +99,9 @@ export class PhotoExtractor {
     this.page = await this.context.newPage();
     this.page.setDefaultTimeout(this.config.timeout);
 
+    // Setup browser disconnect listener
+    this.setupDisconnectListener();
+
     this.log('info', '✓ Browser initialized');
   }
 
@@ -112,6 +116,70 @@ export class PhotoExtractor {
       this.page = null;
       this.log('info', 'Browser closed');
     }
+  }
+
+  /**
+   * Check if browser is initialized
+   */
+  get isInitialized(): boolean {
+    return this.browser !== null && this.page !== null;
+  }
+
+  /**
+   * Check browser health
+   * Verifies browser connection and page responsiveness
+   */
+  async checkHealth(): Promise<boolean> {
+    if (!this.browser || !this.page) {
+      return false;
+    }
+    try {
+      // Check browser connection status
+      if (!this.browser.isConnected()) {
+        return false;
+      }
+      // Execute simple script to verify page responsiveness
+      // Using string-based evaluate to avoid DOM type issues in Node environment
+      await this.page.evaluate('1 + 1');
+      return true;
+    } catch (error) {
+      this.log('warn', `Health check failed: ${error}`);
+      return false;
+    }
+  }
+
+  /**
+   * Monitor browser disconnect event
+   */
+  private setupDisconnectListener(): void {
+    if (this.browser) {
+      this.browser.on('disconnected', () => {
+        this.log('error', 'Browser disconnected unexpectedly');
+        this.browser = null;
+        this.context = null;
+        this.page = null;
+        this.events.onBrowserDisconnected?.();
+      });
+    }
+  }
+
+  /**
+   * Reinitialize browser
+   * Closes existing resources and initializes a new browser instance
+   */
+  async reinitialize(): Promise<void> {
+    this.log('info', 'Reinitializing browser...');
+
+    // Close existing resources
+    try {
+      await this.close();
+    } catch (error) {
+      this.log('warn', `Error closing browser during reinitialize: ${error}`);
+    }
+
+    // Reinitialize
+    await this.initialize();
+    this.log('info', '✓ Browser reinitialized');
   }
 
   /**

@@ -3,6 +3,8 @@ import { getDatabase } from '../db/index.js';
 
 interface DropboxCredentials {
   refreshToken: string;
+  accessToken: string | null;
+  expiresAt: Date | null;
   accountId: string | null;
   accountName: string | null;
   accountEmail: string | null;
@@ -52,6 +54,7 @@ export class DropboxService {
   private client: Dropbox | null = null;
   private appKey: string;
   private appSecret: string;
+  private refreshTokenPromise: Promise<string> | null = null; // Concurrency protection
 
   constructor() {
     this.appKey = process.env.DROPBOX_APP_KEY || '';
@@ -79,6 +82,8 @@ export class DropboxService {
       .prepare('SELECT * FROM dropbox_credentials ORDER BY id DESC LIMIT 1')
       .get() as {
         refresh_token: string;
+        access_token: string | null;
+        expires_at: string | null;
         account_id: string | null;
         account_name: string | null;
         account_email: string | null;
@@ -90,6 +95,8 @@ export class DropboxService {
 
     return {
       refreshToken: row.refresh_token,
+      accessToken: row.access_token,
+      expiresAt: row.expires_at ? new Date(row.expires_at) : null,
       accountId: row.account_id,
       accountName: row.account_name,
       accountEmail: row.account_email,
@@ -97,17 +104,139 @@ export class DropboxService {
   }
 
   /**
-   * Get or create Dropbox client instance
-   * SDK handles token refresh automatically when configured with refreshToken
+   * Check if token is expiring soon (within 5 minutes)
+   * Returns true if token should be refreshed
    */
-  private getClient(): Dropbox {
-    if (this.client) {
-      return this.client;
+  private isTokenExpiringSoon(expiresAt: Date | null): boolean {
+    if (!expiresAt) {
+      return true; // No expiry time, should refresh
     }
 
+    const now = Date.now();
+    const expiryTime = expiresAt.getTime();
+    const fiveMinutes = 5 * 60 * 1000;
+
+    return expiryTime - now < fiveMinutes;
+  }
+
+  /**
+   * Refresh access token using refresh token
+   * Updates database with new access_token and expires_at
+   * Protected against concurrent calls
+   */
+  public async refreshAccessToken(): Promise<string> {
+    // Prevent concurrent refresh requests
+    if (this.refreshTokenPromise) {
+      console.log('Token refresh already in progress, waiting...');
+      return this.refreshTokenPromise;
+    }
+
+    this.refreshTokenPromise = this.doRefreshToken();
+
+    try {
+      const accessToken = await this.refreshTokenPromise;
+      return accessToken;
+    } finally {
+      this.refreshTokenPromise = null;
+    }
+  }
+
+  /**
+   * Internal method to perform token refresh
+   */
+  private async doRefreshToken(): Promise<string> {
     const credentials = this.getCredentials();
     if (!credentials) {
       throw new Error('Dropbox not connected');
+    }
+
+    console.log('Refreshing Dropbox access token...');
+
+    try {
+      const response = await withRetry(async () => {
+        const res = await fetch('https://api.dropbox.com/oauth2/token', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: new URLSearchParams({
+            grant_type: 'refresh_token',
+            refresh_token: credentials.refreshToken,
+            client_id: this.appKey,
+          }),
+        });
+
+        if (!res.ok) {
+          const errorText = await res.text();
+          throw new Error(`Token refresh failed: ${res.status} ${errorText}`);
+        }
+
+        return res.json() as Promise<{
+          access_token: string;
+          expires_in: number;
+          token_type: string;
+        }>;
+      });
+
+      const expiresAt = new Date(Date.now() + response.expires_in * 1000);
+
+      // Update database
+      const db = getDatabase();
+      db.prepare(
+        `UPDATE dropbox_credentials
+         SET access_token = ?, expires_at = ?, updated_at = CURRENT_TIMESTAMP
+         WHERE id = (SELECT id FROM dropbox_credentials ORDER BY id DESC LIMIT 1)`
+      ).run(response.access_token, expiresAt.toISOString());
+
+      console.log(`✓ Access token refreshed, expires at ${expiresAt.toISOString()}`);
+
+      // Reset client to use new token on next request
+      this.resetClient();
+
+      return response.access_token;
+    } catch (error) {
+      console.error('Failed to refresh access token:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get a valid access token, refreshing if necessary
+   * @returns Valid access token
+   */
+  public async getValidAccessToken(): Promise<string> {
+    const credentials = this.getCredentials();
+    if (!credentials) {
+      throw new Error('Dropbox not connected');
+    }
+
+    // Check if we have a cached token that's still valid
+    if (credentials.accessToken && !this.isTokenExpiringSoon(credentials.expiresAt)) {
+      return credentials.accessToken;
+    }
+
+    // Token is missing or expiring, refresh it
+    return this.refreshAccessToken();
+  }
+
+  /**
+   * Get or create Dropbox client instance
+   * SDK handles token refresh automatically when configured with refreshToken
+   */
+  private async getClient(): Promise<Dropbox> {
+    const credentials = this.getCredentials();
+    if (!credentials) {
+      throw new Error('Dropbox not connected');
+    }
+
+    // Check if token needs refresh before creating/reusing client
+    if (this.isTokenExpiringSoon(credentials.expiresAt)) {
+      console.log('Token expiring soon, refreshing...');
+      await this.refreshAccessToken();
+    }
+
+    if (this.client) {
+      return this.client;
     }
 
     // Initialize with refresh token - SDK handles auto-refresh
@@ -137,7 +266,7 @@ export class DropboxService {
     data: Buffer,
     options?: { autorename?: boolean; overwrite?: boolean }
   ): Promise<{ path: string; size: number }> {
-    const client = this.getClient();
+    const client = await this.getClient();
 
     // Ensure path starts with /
     const fullPath = path.startsWith('/') ? path : `/${path}`;
@@ -169,7 +298,7 @@ export class DropboxService {
    * Matches Python: ensure_dropbox_path()
    */
   async ensureFolder(path: string): Promise<boolean> {
-    const client = this.getClient();
+    const client = await this.getClient();
 
     // Ensure path starts with /
     const fullPath = path.startsWith('/') ? path : `/${path}`;
@@ -209,7 +338,7 @@ export class DropboxService {
    */
   async getAccountInfo(): Promise<{ name: string; email: string } | null> {
     try {
-      const client = this.getClient();
+      const client = await this.getClient();
       const response = await client.usersGetCurrentAccount();
       const account = response.result;
 
@@ -228,7 +357,7 @@ export class DropboxService {
    * Matches Python: get_existing_files()
    */
   async listFolder(path: string): Promise<Set<string>> {
-    const client = this.getClient();
+    const client = await this.getClient();
     const existing = new Set<string>();
 
     // Ensure path starts with /

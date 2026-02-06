@@ -110,6 +110,9 @@ async function handleDelete() {
       </div>
       <NSpace>
         <template v-if="taskStore.currentTask">
+          <NButton @click="router.push(`/tasks/${taskId}/logs`)">
+            View Logs
+          </NButton>
           <NButton
             v-if="!taskStore.currentTask.isActive"
             type="primary"

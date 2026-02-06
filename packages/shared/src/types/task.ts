@@ -78,3 +78,15 @@ export const DEFAULT_TASK_CONFIG = {
   browserTimeout: 30000,
   selectors: DEFAULT_SELECTORS,
 };
+
+/**
+ * Task log entry
+ */
+export interface TaskLog {
+  id: number;
+  taskId: number;
+  level: 'info' | 'warn' | 'error';
+  message: string;
+  metadataJson: string | null;
+  createdAt: string;
+}
