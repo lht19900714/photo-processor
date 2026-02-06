@@ -93,22 +93,24 @@ export class TaskManager {
   }
 
   /**
-   * Save download record
+   * Save download record (success or failure)
    */
   private saveDownloadRecord(
     taskId: number,
     fingerprint: string,
     originalFilename: string,
     thumbnailUrl: string,
-    dropboxPath: string,
-    fileSize: number
+    dropboxPath: string | null,
+    fileSize: number | null,
+    status: 'success' | 'failed' = 'success',
+    errorMessage: string | null = null
   ): void {
     const db = getDatabase();
     db.prepare(
       `INSERT OR REPLACE INTO download_history
-      (task_id, fingerprint, original_filename, thumbnail_url, dropbox_path, file_size)
-      VALUES (?, ?, ?, ?, ?, ?)`
-    ).run(taskId, fingerprint, originalFilename, thumbnailUrl, dropboxPath, fileSize);
+      (task_id, fingerprint, original_filename, thumbnail_url, dropbox_path, file_size, status, error_message)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(taskId, fingerprint, originalFilename, thumbnailUrl, dropboxPath, fileSize, status, errorMessage);
   }
 
   /**
@@ -272,10 +274,14 @@ export class TaskManager {
     const db = getDatabase();
     const stats = db
       .prepare(
-        `SELECT COUNT(*) as downloaded, MAX(downloaded_at) as lastDownload
+        `SELECT
+           COUNT(*) as total,
+           SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as downloaded,
+           SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed,
+           MAX(downloaded_at) as lastDownload
          FROM download_history WHERE task_id = ?`
       )
-      .get(taskId) as { downloaded: number; lastDownload: string | null };
+      .get(taskId) as { total: number; downloaded: number; failed: number; lastDownload: string | null };
 
     return {
       taskId,
@@ -285,9 +291,9 @@ export class TaskManager {
       nextCheckAt: runningTask?.nextCheckAt?.toISOString() || null,
       error: runningTask?.error || null,
       stats: {
-        totalPhotos: 0,
+        totalPhotos: stats.total,
         downloadedPhotos: stats.downloaded,
-        failedPhotos: 0,
+        failedPhotos: stats.failed,
         lastDownloadAt: stats.lastDownload,
       },
     };
@@ -433,6 +439,18 @@ export class TaskManager {
               });
             },
             onDownloadFailed: (photo, error) => {
+              // Save failed record to database
+              this.saveDownloadRecord(
+                taskId,
+                photo.fingerprint,
+                photo.filename,
+                photo.thumbnailUrl,
+                null,
+                null,
+                'failed',
+                error
+              );
+
               this.emit({
                 type: 'download:failed',
                 taskId,

@@ -14,29 +14,38 @@ photoRoutes.get('/', (c) => {
     const page = parseInt(c.req.query('page') || '1', 10);
     const pageSize = parseInt(c.req.query('pageSize') || '20', 10);
     const taskId = c.req.query('taskId');
+    const status = c.req.query('status'); // 'success' | 'failed' | undefined (all)
 
     const db = getDatabase();
     const offset = (page - 1) * pageSize;
 
-    let whereClause = '';
+    const whereClauses: string[] = [];
     const params: any[] = [];
 
     if (taskId) {
-      whereClause = 'WHERE task_id = ?';
+      whereClauses.push('dh.task_id = ?');
       params.push(parseInt(taskId, 10));
     }
 
+    if (status) {
+      whereClauses.push('dh.status = ?');
+      params.push(status);
+    }
+
+    const whereClause = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+
     // Get total count
     const countResult = db
-      .prepare(`SELECT COUNT(*) as total FROM download_history ${whereClause}`)
+      .prepare(`SELECT COUNT(*) as total FROM download_history dh ${whereClause}`)
       .get(...params) as { total: number };
 
-    // Get items
+    // Get items with task name
     const items = db
       .prepare(
-        `SELECT * FROM download_history
+        `SELECT dh.*, tc.name as task_name FROM download_history dh
+        LEFT JOIN task_configs tc ON dh.task_id = tc.id
         ${whereClause}
-        ORDER BY downloaded_at DESC
+        ORDER BY dh.downloaded_at DESC
         LIMIT ? OFFSET ?`
       )
       .all(...params, pageSize, offset) as any[];
@@ -44,11 +53,14 @@ photoRoutes.get('/', (c) => {
     const photos: Photo[] = items.map((item) => ({
       id: item.id,
       taskId: item.task_id,
+      taskName: item.task_name || '未知任务',
       fingerprint: item.fingerprint,
       originalFilename: item.original_filename,
       thumbnailUrl: item.thumbnail_url,
       dropboxPath: item.dropbox_path,
       fileSize: item.file_size,
+      status: item.status || 'success',
+      errorMessage: item.error_message,
       downloadedAt: item.downloaded_at,
     }));
 

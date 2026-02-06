@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import type { TaskConfig, TaskRuntimeStatus, CreateTaskInput } from '@photo-processor/shared';
+import type { TaskConfig, TaskRuntimeStatus, CreateTaskInput, FailedDownload } from '@photo-processor/shared';
 import { api } from '@/lib/api';
 
 export const useTaskStore = defineStore('task', () => {
@@ -93,6 +93,14 @@ export const useTaskStore = defineStore('task', () => {
     return null;
   }
 
+  async function fetchTaskErrors(id: number, limit = 50): Promise<FailedDownload[]> {
+    const response = await api.get<FailedDownload[]>(`/tasks/${id}/errors?limit=${limit}`);
+    if (response.success && response.data) {
+      return response.data;
+    }
+    return [];
+  }
+
   return {
     tasks,
     currentTask,
@@ -107,5 +115,6 @@ export const useTaskStore = defineStore('task', () => {
     startTask,
     stopTask,
     fetchTaskStatus,
+    fetchTaskErrors,
   };
 });

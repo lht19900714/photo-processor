@@ -325,3 +325,38 @@ taskRoutes.get('/:id/logs', (c) => {
     return c.json<ApiResponse>({ success: false, error: 'Failed to get task logs' }, 500);
   }
 });
+
+// Get task failed downloads
+taskRoutes.get('/:id/errors', (c) => {
+  try {
+    const id = parseInt(c.req.param('id'), 10);
+    const limit = parseInt(c.req.query('limit') || '50', 10);
+    const db = getDatabase();
+
+    const errors = db
+      .prepare(
+        `SELECT id, fingerprint, original_filename, error_message, downloaded_at
+        FROM download_history
+        WHERE task_id = ? AND status = 'failed'
+        ORDER BY downloaded_at DESC
+        LIMIT ?`
+      )
+      .all(id, limit) as any[];
+
+    const formattedErrors = errors.map((err) => ({
+      id: err.id,
+      fingerprint: err.fingerprint,
+      filename: err.original_filename,
+      errorMessage: err.error_message,
+      failedAt: err.downloaded_at,
+    }));
+
+    return c.json<ApiResponse>({
+      success: true,
+      data: formattedErrors,
+    });
+  } catch (error) {
+    console.error('Get task errors error:', error);
+    return c.json<ApiResponse>({ success: false, error: 'Failed to get task errors' }, 500);
+  }
+});

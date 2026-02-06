@@ -85,11 +85,27 @@ function runMigrations(db: Database.Database): void {
       thumbnail_url TEXT,
       dropbox_path TEXT,
       file_size INTEGER,
+      status TEXT DEFAULT 'success',
+      error_message TEXT,
       downloaded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (task_id) REFERENCES task_configs(id) ON DELETE CASCADE,
       UNIQUE(task_id, fingerprint)
     )
   `);
+
+  // Migration: Add status and error_message columns if they don't exist
+  const columns = db.prepare("PRAGMA table_info(download_history)").all() as { name: string }[];
+  const columnNames = columns.map(c => c.name);
+
+  if (!columnNames.includes('status')) {
+    db.exec("ALTER TABLE download_history ADD COLUMN status TEXT DEFAULT 'success'");
+    console.log('✓ Migration: Added status column to download_history');
+  }
+
+  if (!columnNames.includes('error_message')) {
+    db.exec("ALTER TABLE download_history ADD COLUMN error_message TEXT");
+    console.log('✓ Migration: Added error_message column to download_history');
+  }
 
   // Task logs table
   db.exec(`
@@ -111,6 +127,12 @@ function runMigrations(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_task_logs_task_id ON task_logs(task_id);
     CREATE INDEX IF NOT EXISTS idx_task_logs_created_at ON task_logs(created_at);
   `);
+
+  // Reset running tasks to idle on startup (they were interrupted by server restart)
+  const resetResult = db.prepare("UPDATE task_configs SET is_active = 0 WHERE is_active = 1").run();
+  if (resetResult.changes > 0) {
+    console.log(`✓ Reset ${resetResult.changes} interrupted task(s) to idle state`);
+  }
 
   console.log('✓ Database migrations completed');
 }

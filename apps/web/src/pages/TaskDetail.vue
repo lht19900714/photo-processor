@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
   NCard,
@@ -10,10 +10,17 @@ import {
   NTag,
   NSpin,
   NPopconfirm,
+  NStatistic,
+  NGrid,
+  NGi,
+  NDataTable,
+  NCollapse,
+  NCollapseItem,
   useMessage,
 } from 'naive-ui';
 import { useTaskStore } from '@/stores/task';
 import { formatDate } from '@photo-processor/shared';
+import type { TaskRuntimeStatus, FailedDownload } from '@photo-processor/shared';
 
 const route = useRoute();
 const router = useRouter();
@@ -22,19 +29,50 @@ const taskStore = useTaskStore();
 
 const loading = ref(true);
 const taskId = parseInt(route.params.id as string, 10);
+const taskStatus = ref<TaskRuntimeStatus | null>(null);
+const failedDownloads = ref<FailedDownload[]>([]);
+let statusInterval: ReturnType<typeof setInterval> | null = null;
+
+const errorColumns = [
+  { title: '文件名', key: 'filename', ellipsis: { tooltip: true } },
+  { title: '错误原因', key: 'errorMessage', ellipsis: { tooltip: true } },
+  {
+    title: '失败时间',
+    key: 'failedAt',
+    width: 180,
+    render: (row: FailedDownload) => formatDate(row.failedAt),
+  },
+];
 
 onMounted(async () => {
   try {
     await taskStore.fetchTask(taskId);
+    await refreshStatus();
+    // Start status polling
+    statusInterval = setInterval(refreshStatus, 5000);
   } finally {
     loading.value = false;
   }
 });
 
+onUnmounted(() => {
+  if (statusInterval) {
+    clearInterval(statusInterval);
+  }
+});
+
+async function refreshStatus() {
+  taskStatus.value = await taskStore.fetchTaskStatus(taskId);
+  if (taskStatus.value && taskStatus.value.stats.failedPhotos > 0) {
+    failedDownloads.value = await taskStore.fetchTaskErrors(taskId);
+  }
+}
+
 async function handleStart() {
   try {
     await taskStore.startTask(taskId);
     message.success('任务已启动');
+    await refreshStatus();
   } catch (error: any) {
     message.error(error.message || '启动失败');
   }
@@ -44,6 +82,7 @@ async function handleStop() {
   try {
     await taskStore.stopTask(taskId);
     message.success('任务已停止');
+    await refreshStatus();
   } catch (error: any) {
     message.error(error.message || '停止失败');
   }
@@ -97,6 +136,52 @@ async function handleDelete() {
 
     <NSpin :show="loading">
       <template v-if="taskStore.currentTask">
+        <!-- 统计卡片 -->
+        <NCard title="处理统计" class="mb-4">
+          <NGrid :cols="4" :x-gap="16">
+            <NGi>
+              <NStatistic label="总处理数" :value="taskStatus?.stats.totalPhotos || 0" />
+            </NGi>
+            <NGi>
+              <NStatistic label="成功下载">
+                <template #default>
+                  <span class="text-green-600">{{ taskStatus?.stats.downloadedPhotos || 0 }}</span>
+                </template>
+              </NStatistic>
+            </NGi>
+            <NGi>
+              <NStatistic label="失败数">
+                <template #default>
+                  <span :class="(taskStatus?.stats.failedPhotos || 0) > 0 ? 'text-red-600' : ''">
+                    {{ taskStatus?.stats.failedPhotos || 0 }}
+                  </span>
+                </template>
+              </NStatistic>
+            </NGi>
+            <NGi>
+              <NStatistic label="运行周期" :value="taskStatus?.currentCycle || 0" />
+            </NGi>
+          </NGrid>
+          <div v-if="taskStatus?.stats.lastDownloadAt" class="mt-4 text-sm text-gray-500">
+            最后下载时间: {{ formatDate(taskStatus.stats.lastDownloadAt) }}
+          </div>
+        </NCard>
+
+        <!-- 失败记录 -->
+        <NCollapse v-if="failedDownloads.length > 0" class="mb-4">
+          <NCollapseItem title="失败记录" name="errors">
+            <template #header-extra>
+              <NTag type="error" size="small">{{ failedDownloads.length }} 条</NTag>
+            </template>
+            <NDataTable
+              :columns="errorColumns"
+              :data="failedDownloads"
+              :bordered="false"
+              :max-height="300"
+            />
+          </NCollapseItem>
+        </NCollapse>
+
         <NCard title="基本信息" class="mb-4">
           <NDescriptions :column="2">
             <NDescriptionsItem label="任务名称">
