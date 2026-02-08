@@ -40,15 +40,15 @@ services:
       start_period: 40s
     networks:
       - photo-net
-    # [H-2 FIX] Add resource limits
+    # [H-2 FIX] Add resource limits (adjusted for single CPU server)
     deploy:
       resources:
         limits:
-          cpus: '2.0'
-          memory: 2G
+          cpus: '0.8'
+          memory: 1G
         reservations:
-          cpus: '0.5'
-          memory: 512M
+          cpus: '0.25'
+          memory: 256M
     logging:
       driver: "json-file"
       options:
@@ -74,15 +74,15 @@ services:
         condition: service_healthy
     networks:
       - photo-net
-    # [H-2 FIX] Add resource limits for web container
+    # [H-2 FIX] Add resource limits for web container (adjusted for single CPU server)
     deploy:
       resources:
         limits:
-          cpus: '1.0'
-          memory: 512M
+          cpus: '0.5'
+          memory: 256M
         reservations:
-          cpus: '0.25'
-          memory: 128M
+          cpus: '0.1'
+          memory: 64M
     logging:
       driver: "json-file"
       options:
