@@ -159,7 +159,7 @@ jobs:
         run: |
           ssh -o StrictHostKeyChecking=no \
             ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} \
-            "cd ${{ secrets.DEPLOY_PATH }} && chmod +x *.sh server-deploy.sh && ./server-deploy.sh"
+            "cd ${{ secrets.DEPLOY_PATH }} && echo 'Current directory:' && pwd && echo 'Files:' && ls -la && chmod +x *.sh && ./server-deploy.sh"
 
       # [H-3 FIX] Add health check after deployment
       - name: Health Check
