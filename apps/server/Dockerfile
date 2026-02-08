@@ -8,7 +8,6 @@ RUN corepack enable && corepack prepare yarn@4.6.0 --activate
 
 # Copy workspace files
 COPY package.json yarn.lock .yarnrc.yml ./
-COPY .yarn ./.yarn
 COPY turbo.json ./
 COPY tsconfig.base.json ./
 

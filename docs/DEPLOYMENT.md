@@ -59,7 +59,7 @@ GHCR 是 GitHub 免费提供的容器镜像存储服务：
 
 ```bash
 # 下载设置脚本
-curl -O https://raw.githubusercontent.com/YOUR_USERNAME/photo-processor/main/scripts/server-setup.sh
+curl -O https://raw.githubusercontent.com/lht19900714/photo-processor/main/scripts/server-setup.sh
 chmod +x server-setup.sh
 ./server-setup.sh
 ```
@@ -294,8 +294,8 @@ docker compose -f docker-compose.prod.yml logs -f web     # 仅前端
 docker compose -f docker-compose.prod.yml restart
 
 # 手动拉取最新镜像
-docker pull ghcr.io/YOUR_USERNAME/photo-processor-server:latest
-docker pull ghcr.io/YOUR_USERNAME/photo-processor-web:latest
+docker pull ghcr.io/lht19900714/photo-processor-server:latest
+docker pull ghcr.io/lht19900714/photo-processor-web:latest
 ```
 
 ### 备份数据
@@ -331,13 +331,13 @@ ssh user@your-server
 cd /opt/photo-processor
 
 # 拉取最新镜像
-docker pull ghcr.io/YOUR_USERNAME/photo-processor-server:latest
-docker pull ghcr.io/YOUR_USERNAME/photo-processor-web:latest
+docker pull ghcr.io/lht19900714/photo-processor-server:latest
+docker pull ghcr.io/lht19900714/photo-processor-web:latest
 
 # 更新 .env.images
 cat > .env.images << EOF
-SERVER_IMAGE=ghcr.io/YOUR_USERNAME/photo-processor-server:latest
-WEB_IMAGE=ghcr.io/YOUR_USERNAME/photo-processor-web:latest
+SERVER_IMAGE=ghcr.io/lht19900714/photo-processor-server:latest
+WEB_IMAGE=ghcr.io/lht19900714/photo-processor-web:latest
 EOF
 
 # 重启服务
@@ -482,8 +482,8 @@ cp .backup/.env.images.bak .env.images
 
 # 方法 2：手动指定版本
 cat > .env.images << EOF
-SERVER_IMAGE=ghcr.io/YOUR_USERNAME/photo-processor-server:20240101-120000-abc1234
-WEB_IMAGE=ghcr.io/YOUR_USERNAME/photo-processor-web:20240101-120000-abc1234
+SERVER_IMAGE=ghcr.io/lht19900714/photo-processor-server:20240101-120000-abc1234
+WEB_IMAGE=ghcr.io/lht19900714/photo-processor-web:20240101-120000-abc1234
 EOF
 
 ./start.sh
