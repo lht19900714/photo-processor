@@ -12,7 +12,6 @@
     "db:migrate": "tsx src/db/migrate.ts"
   },
   "dependencies": {
-    "@hono/node-server": "^1.13.0",
     "@photo-processor/shared": "workspace:*",
     "bcrypt": "^5.1.1",
     "better-sqlite3": "^11.6.0",

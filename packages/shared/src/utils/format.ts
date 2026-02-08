@@ -14,23 +14,6 @@ export function formatBytes(bytes: number, decimals = 2): string {
 }
 
 /**
- * Format duration in seconds to human readable string
- */
-export function formatDuration(seconds: number): string {
-  if (seconds < 60) {
-    return `${seconds}秒`;
-  }
-  if (seconds < 3600) {
-    const minutes = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return secs > 0 ? `${minutes}分${secs}秒` : `${minutes}分钟`;
-  }
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  return minutes > 0 ? `${hours}小时${minutes}分钟` : `${hours}小时`;
-}
-
-/**
  * Format date to locale string
  */
 export function formatDate(date: string | Date): string {

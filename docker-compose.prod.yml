@@ -1,0 +1,100 @@
+# =============================================================================
+# Photo-Processor Production Docker Compose (GHCR Version)
+# Domain: photo.wangdake.de
+# Ports: 22080 (HTTP), 22443 (HTTPS), 22000 (API internal)
+#
+# This file is used for deployment with pre-built images from GHCR.
+# For local development, use docker-compose.yml instead.
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # Backend API + Playwright Browser Automation
+  # ---------------------------------------------------------------------------
+  server:
+    image: ${SERVER_IMAGE:-ghcr.io/your-username/photo-processor-server:latest}
+    container_name: photo-processor-server
+    restart: unless-stopped
+    expose:
+      - "22000"
+    volumes:
+      # [C-3 FIX] Mount entire data directory instead of individual files
+      - ./data:/app/data:rw
+    environment:
+      - NODE_ENV=production
+      - PORT=22000
+      - HOST=0.0.0.0
+      - DATABASE_PATH=/app/data/app.db
+      - JWT_SECRET=${JWT_SECRET}
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - DROPBOX_APP_KEY=${DROPBOX_APP_KEY}
+      - DROPBOX_REDIRECT_URI=https://photo.wangdake.de:22443/api/dropbox/callback
+      - FRONTEND_URL=https://photo.wangdake.de:22443
+      - CORS_ORIGIN=https://photo.wangdake.de:22443
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:22000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - photo-net
+    # [H-2 FIX] Add resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # ---------------------------------------------------------------------------
+  # Frontend with Caddy (Auto HTTPS via Let's Encrypt)
+  # ---------------------------------------------------------------------------
+  web:
+    image: ${WEB_IMAGE:-ghcr.io/your-username/photo-processor-web:latest}
+    container_name: photo-processor-web
+    restart: unless-stopped
+    ports:
+      - "22080:22080"
+      - "22443:22443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      server:
+        condition: service_healthy
+    networks:
+      - photo-net
+    # [H-2 FIX] Add resource limits for web container
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  photo-net:
+    driver: bridge
+
+volumes:
+  caddy_data:
+    name: photo-processor-caddy-data
+  caddy_config:
+    name: photo-processor-caddy-config

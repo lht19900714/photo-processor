@@ -1,0 +1,56 @@
+# =============================================================================
+# Photo-Processor Web Production Dockerfile with Caddy
+#
+# Multi-stage build: Node.js for building Vue app, Caddy for serving
+# =============================================================================
+
+# [M-1 FIX] Use specific Node.js version for reproducible builds
+FROM node:22.13.1-alpine AS builder
+
+WORKDIR /app
+
+# Install dependencies
+RUN corepack enable && corepack prepare yarn@4.6.0 --activate
+
+# Copy workspace files
+COPY package.json yarn.lock .yarnrc.yml ./
+COPY .yarn ./.yarn
+COPY turbo.json ./
+COPY tsconfig.base.json ./
+
+# Copy package files
+COPY packages/shared/package.json ./packages/shared/
+COPY apps/web/package.json ./apps/web/
+
+# Install dependencies
+RUN yarn install --immutable
+
+# Copy source code
+COPY packages/shared ./packages/shared
+COPY apps/web ./apps/web
+
+# Build with production API base URL (empty = relative path)
+ENV VITE_API_BASE_URL=""
+RUN yarn turbo run build --filter=@photo-processor/web
+
+# =============================================================================
+# Production stage - Caddy for serving static files and reverse proxy
+# =============================================================================
+# [M-1 FIX] Use specific Caddy version
+FROM caddy:2.8-alpine
+
+# Create log directory
+RUN mkdir -p /var/log/caddy
+
+# Copy built static files
+COPY --from=builder /app/apps/web/dist /srv
+
+# Expose non-standard ports
+EXPOSE 22080 22443
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:22080/health || exit 1
+
+# Run Caddy
+CMD ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]

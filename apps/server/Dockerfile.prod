@@ -1,0 +1,70 @@
+# =============================================================================
+# Photo-Processor Server Production Dockerfile
+#
+# Multi-stage build for optimized production image with Playwright
+# =============================================================================
+
+# [M-1 FIX] Use specific Node.js version for reproducible builds
+FROM node:22.13.1-alpine AS builder
+
+WORKDIR /app
+
+# Install dependencies
+RUN corepack enable && corepack prepare yarn@4.6.0 --activate
+
+# Copy workspace files
+COPY package.json yarn.lock .yarnrc.yml ./
+COPY .yarn ./.yarn
+COPY turbo.json ./
+COPY tsconfig.base.json ./
+
+# Copy package files for all workspaces
+COPY packages/shared/package.json ./packages/shared/
+COPY apps/server/package.json ./apps/server/
+
+# Install dependencies
+RUN yarn install --immutable
+
+# Copy source code
+COPY packages/shared ./packages/shared
+COPY apps/server ./apps/server
+
+# Build shared package first, then server
+RUN yarn turbo run build --filter=@photo-processor/server
+
+# =============================================================================
+# Production stage - use Playwright base image for browser automation
+# =============================================================================
+FROM mcr.microsoft.com/playwright:v1.49.0-jammy
+
+WORKDIR /app
+
+# Install Node.js 22 and curl (for health checks)
+RUN apt-get update && apt-get install -y curl && \
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
+    apt-get install -y nodejs && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy built files
+COPY --from=builder /app/apps/server/dist ./dist
+COPY --from=builder /app/apps/server/package.json ./
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/packages/shared/dist ./node_modules/@photo-processor/shared/dist
+COPY --from=builder /app/packages/shared/package.json ./node_modules/@photo-processor/shared/
+
+# Create data directory with proper permissions
+RUN mkdir -p /app/data && chmod 700 /app/data
+
+# Set environment - using port 22000 for production
+ENV NODE_ENV=production
+ENV PORT=22000
+ENV HOST=0.0.0.0
+
+# Expose internal API port (not directly accessible from host)
+EXPOSE 22000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:22000/health || exit 1
+
+CMD ["node", "dist/index.js"]

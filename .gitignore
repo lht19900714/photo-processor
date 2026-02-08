@@ -13,10 +13,12 @@ dist/
 out/
 build/
 
-# Environment files
+# Environment files (IMPORTANT: Never commit secrets!)
 .env
 .env.local
 .env.*.local
+.env.prod
+.env.images
 
 # IDE
 .idea/
@@ -42,6 +44,10 @@ coverage/
 *.db
 *.sqlite
 *.sqlite3
+data/
+
+# Data directory (SQLite database, runtime data)
+apps/server/data/
 
 # Playwright
 /test-results/
@@ -54,6 +60,12 @@ coverage/
 .cache/
 tmp/
 temp/
+
+# SSH keys (NEVER commit!)
+*.pem
+id_rsa*
+id_ed25519*
+deploy_key*
 
 # Original Python script (has its own git)
 photo-download/
