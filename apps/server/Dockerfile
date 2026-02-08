@@ -16,7 +16,7 @@ COPY packages/shared/package.json ./packages/shared/
 COPY apps/server/package.json ./apps/server/
 
 # Install dependencies
-RUN yarn install --immutable
+RUN yarn install
 
 # Copy source code
 COPY packages/shared ./packages/shared

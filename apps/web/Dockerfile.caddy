@@ -22,7 +22,7 @@ COPY packages/shared/package.json ./packages/shared/
 COPY apps/web/package.json ./apps/web/
 
 # Install dependencies
-RUN yarn install --immutable
+RUN yarn install
 
 # Copy source code
 COPY packages/shared ./packages/shared
