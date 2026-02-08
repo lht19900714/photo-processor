@@ -146,11 +146,9 @@ jobs:
           cp scripts/start.sh deploy-package/
           cp scripts/stop.sh deploy-package/
 
-          # Create .env file for image tags (no indentation!)
-          cat > deploy-package/.env.images << 'EOF'
-SERVER_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-server:latest
-WEB_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-web:latest
-EOF
+          # Create .env file for image tags
+          echo "SERVER_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-server:latest" > deploy-package/.env.images
+          echo "WEB_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-web:latest" >> deploy-package/.env.images
 
       - name: Copy files to server
         run: |
