@@ -150,9 +150,16 @@ jobs:
           echo "SERVER_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-server:latest" > deploy-package/.env.images
           echo "WEB_IMAGE=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-web:latest" >> deploy-package/.env.images
 
+          # Verify the package
+          echo "=== Deployment package contents ==="
+          ls -la deploy-package/
+          echo "=== .env.images content ==="
+          cat deploy-package/.env.images
+
       - name: Copy files to server
         run: |
-          scp -o StrictHostKeyChecking=no -r deploy-package/* \
+          # Copy all files including hidden files (. prefix)
+          scp -o StrictHostKeyChecking=no -r deploy-package/. \
             ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }}:${{ secrets.DEPLOY_PATH }}/
 
       - name: Pull images on server
