@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { SignJWT, jwtVerify } from 'jose';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import { getDatabase } from '../db/index.js';
 import type { ApiResponse, LoginInput, LoginResponse, User } from '@photo-processor/shared';
 

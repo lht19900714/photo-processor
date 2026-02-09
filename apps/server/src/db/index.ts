@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 import { existsSync, mkdirSync } from 'fs';
 import { dirname } from 'path';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 
 let db: Database.Database | null = null;
 
