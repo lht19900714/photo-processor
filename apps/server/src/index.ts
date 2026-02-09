@@ -17,7 +17,7 @@ import { dropboxRoutes } from './routes/dropbox.js';
 import { initDatabase } from './db/index.js';
 
 // Import WebSocket handler
-import { WSHandler } from './ws/handler.js';
+import { WSHandler } from './websocket/handler.js';
 
 // Import task manager for graceful shutdown
 import { getTaskManager } from './services/task-manager.service.js';
