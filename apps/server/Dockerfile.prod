@@ -2,14 +2,24 @@
 # Photo-Processor Server Production Dockerfile
 #
 # Multi-stage build for optimized production image with Playwright
+# Uses Playwright base image for BOTH stages to ensure native module
+# binary compatibility (glibc). This fixes the critical better-sqlite3
+# cross-compilation issue (Alpine musl vs Ubuntu glibc).
 # =============================================================================
 
-# [M-1 FIX] Use specific Node.js version for reproducible builds
-FROM node:22.13.1-alpine AS builder
+# ---------------------------------------------------------------------------
+# Stage 1: Build TypeScript on same platform as production (glibc)
+# ---------------------------------------------------------------------------
+FROM mcr.microsoft.com/playwright:v1.49.0-jammy AS builder
 
 WORKDIR /app
 
-# Install dependencies
+# Install build tools for native modules (better-sqlite3 requires node-gyp)
+RUN apt-get update && \
+    apt-get install -y python3 make g++ && \
+    rm -rf /var/lib/apt/lists/*
+
+# Playwright image includes Node 18 - use corepack for Yarn 4
 RUN corepack enable && corepack prepare yarn@4.6.0 --activate
 
 # Copy workspace files
@@ -21,6 +31,9 @@ COPY tsconfig.base.json ./
 COPY packages/shared/package.json ./packages/shared/
 COPY apps/server/package.json ./apps/server/
 
+# Skip browser download during install (production image already has browsers)
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+
 # Install dependencies
 RUN yarn install
 
@@ -31,30 +44,32 @@ COPY apps/server ./apps/server
 # Build shared package first, then server
 RUN yarn turbo run build --filter=@photo-processor/server
 
-# =============================================================================
-# Production stage - use Playwright base image for browser automation
-# =============================================================================
+# ---------------------------------------------------------------------------
+# Stage 2: Production image with pre-installed Playwright browsers
+# ---------------------------------------------------------------------------
 FROM mcr.microsoft.com/playwright:v1.49.0-jammy
 
 WORKDIR /app
 
-# Install Node.js 22 and curl (for health checks)
-RUN apt-get update && apt-get install -y curl && \
-    curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
-    apt-get install -y nodejs && \
-    rm -rf /var/lib/apt/lists/*
+# Install curl for health checks (Node 18 is already included)
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 
 # Copy built files
 COPY --from=builder /app/apps/server/dist ./dist
 COPY --from=builder /app/apps/server/package.json ./
+
+# Copy node_modules (compiled on same glibc platform - binary compatible)
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/packages/shared/dist ./node_modules/@photo-processor/shared/dist
 COPY --from=builder /app/packages/shared/package.json ./node_modules/@photo-processor/shared/
 
+# Use Playwright's pre-installed browsers
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+
 # Create data directory with proper permissions
 RUN mkdir -p /app/data && chmod 700 /app/data
 
-# Set environment - using port 22000 for production
+# Set environment - using port 22000 for production (internal only)
 ENV NODE_ENV=production
 ENV PORT=22000
 ENV HOST=0.0.0.0

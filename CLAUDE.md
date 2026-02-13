@@ -250,8 +250,8 @@ CREATE TABLE download_history (
 ## 部署配置
 
 ### 生产环境端口
-- **22080** - HTTP (自动重定向到 HTTPS)
-- **22443** - HTTPS (Caddy 自动证书)
+- **80** - HTTP (自动重定向到 HTTPS)
+- **443** - HTTPS (Caddy 自动证书)
 - **22000** - 内部 API 端口 (不暴露)
 
 ### 环境变量
@@ -315,7 +315,7 @@ docker compose logs -f
 - 可通过任务配置切换到有头模式调试
 
 ### WebSocket
-- 连接地址：`wss://domain:22443/ws`
+- 连接地址：`wss://domain/ws`
 - 事件类型：`task:started`, `task:stopped`, `scan:*`, `download:*`, `task:error`
 - 前端通过 `useWebSocket` hook 管理连接
 

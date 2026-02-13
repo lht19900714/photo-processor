@@ -1,10 +1,5 @@
 {
-    # Use non-standard ports (80/443 are occupied)
-    http_port 22080
-    https_port 22443
-
-    # [M-8 FIX] Enable Let's Encrypt production for auto SSL
-    # Comment this line and uncomment the staging line below for testing
+    # Let's Encrypt production ACME (requires standard ports 80/443)
     acme_ca https://acme-v02.api.letsencrypt.org/directory
 
     # For testing, use staging to avoid rate limits:
@@ -15,8 +10,8 @@
     # email your-email@example.com
 }
 
-# HTTPS server
-photo.wangdake.de:22443 {
+# HTTPS server (standard port 443)
+photo.wangdake.de {
     # Serve frontend static files
     root * /srv
 
@@ -53,7 +48,7 @@ photo.wangdake.de:22443 {
             header_up Connection {>Connection}
             header_up Upgrade {>Upgrade}
 
-            # [H-5 FIX] WebSocket timeout configuration
+            # WebSocket timeout configuration
             transport http {
                 read_timeout 86400s
                 write_timeout 86400s
@@ -98,7 +93,14 @@ photo.wangdake.de:22443 {
     }
 }
 
-# HTTP to HTTPS redirect
-http://photo.wangdake.de:22080 {
-    redir https://photo.wangdake.de:22443{uri} permanent
+# HTTP health check + redirect (standard port 80)
+# Health endpoint must respond before redirect for Docker health checks
+http://photo.wangdake.de {
+    handle /health {
+        respond "OK" 200
+    }
+
+    handle {
+        redir https://photo.wangdake.de{uri} permanent
+    }
 }

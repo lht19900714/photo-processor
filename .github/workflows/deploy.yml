@@ -168,35 +168,18 @@ jobs:
             ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} \
             "cd ${{ secrets.DEPLOY_PATH }} && echo 'Current directory:' && pwd && echo 'Files:' && ls -la && chmod +x *.sh && ./server-deploy.sh"
 
-      # [H-3 FIX] Add health check after deployment
-      - name: Health Check
-        id: health_check
+      - name: Verify deployment
         run: |
-          echo "Waiting for services to start..."
-          sleep 30
+          echo "Verifying images were pulled successfully..."
+          VERIFY=$(ssh -o StrictHostKeyChecking=no \
+            ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} \
+            "cd ${{ secrets.DEPLOY_PATH }} && source .env.images && docker image inspect \$SERVER_IMAGE >/dev/null 2>&1 && docker image inspect \$WEB_IMAGE >/dev/null 2>&1 && echo 'OK' || echo 'FAIL'")
 
-          # Check if server responds
-          for i in {1..10}; do
-            echo "Health check attempt $i/10..."
-
-            # Check via SSH if containers are healthy
-            HEALTH=$(ssh -o StrictHostKeyChecking=no \
-              ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} \
-              "cd ${{ secrets.DEPLOY_PATH }} && docker compose -f docker-compose.prod.yml ps --format json 2>/dev/null | head -1" || echo "{}")
-
-            if echo "$HEALTH" | grep -q '"Health":"healthy"'; then
-              echo "✅ Health check passed!"
-              echo "healthy=true" >> $GITHUB_OUTPUT
-              exit 0
-            fi
-
-            echo "Waiting 10s before retry..."
-            sleep 10
-          done
-
-          echo "⚠️ Health check did not pass, but deployment may still be successful."
-          echo "Please verify manually: https://photo.wangdake.de:22443"
-          echo "healthy=false" >> $GITHUB_OUTPUT
+          if [ "$VERIFY" = "OK" ]; then
+            echo "✅ Images verified on server"
+          else
+            echo "⚠️ Image verification failed. Check server logs."
+          fi
 
       - name: Deployment summary
         run: |
@@ -204,14 +187,14 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **Environment:** ${{ inputs.environment }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Version:** ${{ needs.build.outputs.version || 'latest' }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Health Check:** ${{ steps.health_check.outputs.healthy == 'true' && '✅ Passed' || '⚠️ Manual verification needed' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status:** Images pulled to server" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Images" >> $GITHUB_STEP_SUMMARY
           echo "- Server: \`${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-server:latest\`" >> $GITHUB_STEP_SUMMARY
           echo "- Web: \`${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-web:latest\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### ⚠️ Manual Steps Required" >> $GITHUB_STEP_SUMMARY
-          echo "If services are not running, SSH to server and run:" >> $GITHUB_STEP_SUMMARY
+          echo "### 🚀 Next Steps" >> $GITHUB_STEP_SUMMARY
+          echo "SSH to server and start the services:" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
           echo "cd ${{ secrets.DEPLOY_PATH }}" >> $GITHUB_STEP_SUMMARY
           echo "./start.sh" >> $GITHUB_STEP_SUMMARY
@@ -227,4 +210,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "# Check status" >> $GITHUB_STEP_SUMMARY
           echo "docker compose -f docker-compose.prod.yml ps" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "# Access URL" >> $GITHUB_STEP_SUMMARY
+          echo "https://photo.wangdake.de" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY

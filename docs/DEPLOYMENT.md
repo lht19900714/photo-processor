@@ -81,9 +81,9 @@ JWT_SECRET=$JWT_SECRET
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=你的强密码（至少8位）
 DROPBOX_APP_KEY=你的Dropbox应用Key
-DROPBOX_REDIRECT_URI=https://photo.wangdake.de:22443/api/dropbox/callback
-FRONTEND_URL=https://photo.wangdake.de:22443
-CORS_ORIGIN=https://photo.wangdake.de:22443
+DROPBOX_REDIRECT_URI=https://photo.wangdake.de/api/dropbox/callback
+FRONTEND_URL=https://photo.wangdake.de
+CORS_ORIGIN=https://photo.wangdake.de
 EOF
 
 # 设置权限（重要！）
@@ -120,6 +120,16 @@ cat ~/.ssh/github_deploy
 3. 点击 **New repository secret**
 4. 依次添加上述 4 个 Secrets
 
+**配置 GitHub Environment（必须）：**
+
+部署工作流使用了 `environment: production` 保护规则，需要先创建该环境：
+
+1. 打开 GitHub 仓库页面
+2. 点击 **Settings** → **Environments**
+3. 点击 **New environment**
+4. 名称输入 `production`，点击 **Configure environment**
+5. 可选：启用 **Required reviewers** 增加部署审批保护
+
 ### 4. 配置 Dropbox 应用
 
 1. 访问 [Dropbox Developer Console](https://www.dropbox.com/developers/apps)
@@ -129,7 +139,7 @@ cat ~/.ssh/github_deploy
    - 输入应用名称
 3. 在应用设置中：
    - 复制 **App key**（添加到服务器 `.env.prod`）
-   - 添加 **OAuth2 redirect URI**：`https://photo.wangdake.de:22443/api/dropbox/callback`
+   - 添加 **OAuth2 redirect URI**：`https://photo.wangdake.de/api/dropbox/callback`
 4. 在 Permissions 中启用：
    - `files.metadata.read`
    - `files.content.write`
@@ -139,12 +149,12 @@ cat ~/.ssh/github_deploy
 
 ```bash
 # UFW
-ufw allow 22080/tcp
-ufw allow 22443/tcp
+ufw allow 80/tcp
+ufw allow 443/tcp
 
 # 或 firewalld
-firewall-cmd --permanent --add-port=22080/tcp
-firewall-cmd --permanent --add-port=22443/tcp
+firewall-cmd --permanent --add-port=80/tcp
+firewall-cmd --permanent --add-port=443/tcp
 firewall-cmd --reload
 ```
 
@@ -170,9 +180,6 @@ firewall-cmd --reload
 ```caddyfile
 # 全局配置
 {
-    http_port 22080
-    https_port 22443
-
     # 生产环境启用 Let's Encrypt 正式证书
     acme_ca https://acme-v02.api.letsencrypt.org/directory
 
@@ -181,13 +188,13 @@ firewall-cmd --reload
 }
 
 # ⚠️ 修改这里的域名
-your-domain.com:22443 {
+your-domain.com {
     # ... 其他配置保持不变
 }
 
 # ⚠️ HTTP 重定向也要修改
-http://your-domain.com:22080 {
-    redir https://your-domain.com:22443{uri} permanent
+http://your-domain.com {
+    redir https://your-domain.com{uri} permanent
 }
 ```
 
@@ -195,9 +202,9 @@ http://your-domain.com:22080 {
 
 ```bash
 # ⚠️ 修改所有 URL 中的域名
-DROPBOX_REDIRECT_URI=https://your-domain.com:22443/api/dropbox/callback
-FRONTEND_URL=https://your-domain.com:22443
-CORS_ORIGIN=https://your-domain.com:22443
+DROPBOX_REDIRECT_URI=https://your-domain.com/api/dropbox/callback
+FRONTEND_URL=https://your-domain.com
+CORS_ORIGIN=https://your-domain.com
 ```
 
 #### 3. Dropbox 开发者后台
@@ -208,7 +215,7 @@ CORS_ORIGIN=https://your-domain.com:22443
 
 Caddy 会自动从 Let's Encrypt 获取免费 SSL 证书，前提是：
 - 域名 DNS 已正确解析到服务器 IP
-- 服务器端口 22080/22443 可从公网访问
+- 服务器端口 80/443 可从公网访问
 - 首次启动时需要几分钟获取证书
 
 ---
@@ -216,7 +223,7 @@ Caddy 会自动从 Let's Encrypt 获取免费 SSL 证书，前提是：
 ## 部署工作流程
 
 ```
-手动触发
+手动触发 GitHub Actions
     │
     ▼
 构建 Docker 镜像 (GitHub Actions 云端)
@@ -228,18 +235,15 @@ Caddy 会自动从 Let's Encrypt 获取免费 SSL 证书，前提是：
 推送到 GHCR
     │
     ▼
-SSH 连接服务器
+SSH 连接服务器，拉取最新镜像
     │
     ▼
-拉取最新镜像 (自动)
+验证镜像拉取成功
     │
     ▼
-健康检查
-    │
-    ▼
-完成 ✅
+CI/CD 完成（容器未启动）
 
-    ⚠️ 手动步骤（如需要）
+    ===== 必须手动操作 =====
     │
     ▼
 SSH 登录服务器
@@ -248,7 +252,7 @@ SSH 登录服务器
 执行 ./start.sh
     │
     ▼
-服务启动 🚀
+服务启动，Caddy 自动申请 HTTPS 证书
 ```
 
 ---
@@ -314,8 +318,8 @@ cp /opt/photo-processor/data/app.db /opt/photo-processor/data/app.db.backup.$(da
 1. 将代码更改推送到 GitHub
 2. 进入 GitHub Actions 页面
 3. 手动触发 **Deploy to Production** 工作流
-4. 等待构建完成
-5. 如果服务没有自动重启，SSH 到服务器执行：
+4. 等待构建完成（CI 只负责构建镜像和拉取到服务器，不会自动启动容器）
+5. SSH 到服务器手动启动服务：
    ```bash
    cd /opt/photo-processor
    ./start.sh
@@ -389,7 +393,7 @@ docker inspect photo-processor-server | jq '.[0].State.Health'
 
 # 手动测试健康端点
 curl http://localhost:22000/health  # 从服务器内部
-curl https://photo.wangdake.de:22443/health  # 从外部
+curl https://photo.wangdake.de/health  # 从外部
 ```
 
 ### 4. 常见问题排查
@@ -417,7 +421,7 @@ docker compose -f docker-compose.prod.yml logs web
 
 # 常见原因：
 # - 域名 DNS 未指向服务器
-# - 端口 22080/22443 被防火墙阻止
+# - 端口 80/443 被防火墙阻止
 # - Let's Encrypt 速率限制（测试时使用 staging）
 
 # 测试时使用 staging 证书（编辑 Caddyfile）：
@@ -526,7 +530,7 @@ docker compose -f docker-compose.prod.yml logs web
 
 # 常见原因：
 # - 域名 DNS 未指向服务器
-# - 端口 22080/22443 被防火墙阻止
+# - 端口 80/443 被防火墙阻止
 # - Let's Encrypt 速率限制（测试时使用 staging）
 ```
 
@@ -541,6 +545,6 @@ docker compose -f docker-compose.prod.yml logs web
 - [ ] JWT_SECRET 是随机生成的强密钥（至少 32 字符）
 - [ ] ADMIN_PASSWORD 是强密码（至少 8 字符）
 - [ ] SSH 私钥只存在 GitHub Secrets
-- [ ] 服务器防火墙只开放必要端口（22080, 22443）
+- [ ] 服务器防火墙只开放必要端口（80, 443）
 - [ ] 代码中无硬编码的密钥
 - [ ] 数据目录权限为 700

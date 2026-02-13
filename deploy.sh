@@ -52,7 +52,7 @@ echo ""
 # Deployment confirmation
 echo -e "${YELLOW}⚠️  You are about to deploy to PRODUCTION${NC}"
 echo ""
-echo -e "Target: ${BLUE}photo.wangdake.de:22443${NC}"
+echo -e "Target: ${BLUE}photo.wangdake.de${NC}"
 echo -e "Directory: ${BLUE}$PROJECT_DIR${NC}"
 echo ""
 read -p "Continue with deployment? (yes/no): " confirm
@@ -139,16 +139,21 @@ mkdir -p data
 chmod 700 data
 echo -e "${GREEN}✓ Data directory ready${NC}"
 
-# Build images
+# Build images locally
 echo -e "${YELLOW}[4/6] Building Docker images...${NC}"
 echo "This may take several minutes on first build..."
 
-if ! docker compose -f docker-compose.prod.yml build --no-cache; then
-    echo -e "${RED}Error: Docker build failed${NC}"
+if ! docker build -f apps/server/Dockerfile.prod -t photo-processor-server:local .; then
+    echo -e "${RED}Error: Server image build failed${NC}"
     exit 1
 fi
+echo -e "${GREEN}✓ Server image built${NC}"
 
-echo -e "${GREEN}✓ Docker images built${NC}"
+if ! docker build -f apps/web/Dockerfile.caddy -t photo-processor-web:local .; then
+    echo -e "${RED}Error: Web image build failed${NC}"
+    exit 1
+fi
+echo -e "${GREEN}✓ Web image built${NC}"
 
 # Stop existing containers
 echo -e "${YELLOW}[5/6] Stopping existing containers (if any)...${NC}"
@@ -157,7 +162,7 @@ echo -e "${GREEN}✓ Existing containers stopped${NC}"
 
 # Start services
 echo -e "${YELLOW}[6/6] Starting services...${NC}"
-if ! docker compose -f docker-compose.prod.yml --env-file .env.prod up -d; then
+if ! SERVER_IMAGE=photo-processor-server:local WEB_IMAGE=photo-processor-web:local docker compose -f docker-compose.prod.yml --env-file .env.prod up -d; then
     echo -e "${RED}Error: Failed to start services${NC}"
     exit 1
 fi
@@ -201,17 +206,17 @@ else
 fi
 echo ""
 echo -e "Access your application at:"
-echo -e "  ${BLUE}https://photo.wangdake.de:22443${NC}"
+echo -e "  ${BLUE}https://photo.wangdake.de${NC}"
 echo ""
 echo -e "HTTP will automatically redirect to HTTPS:"
-echo -e "  ${BLUE}http://photo.wangdake.de:22080${NC}"
+echo -e "  ${BLUE}http://photo.wangdake.de${NC}"
 echo ""
 echo -e "Admin login:"
 echo -e "  Username: ${ADMIN_USERNAME:-admin}"
 echo -e "  Password: (as configured in .env.prod)"
 echo ""
 echo -e "${YELLOW}Important:${NC}"
-echo -e "  1. Make sure ports 22080 and 22443 are open in firewall"
+echo -e "  1. Make sure ports 80 and 443 are open in firewall"
 echo -e "  2. DNS must point photo.wangdake.de to this server"
 echo -e "  3. Let's Encrypt will auto-issue SSL certificate on first request"
 echo ""

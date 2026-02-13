@@ -83,10 +83,10 @@ ADMIN_PASSWORD=CHANGE_ME_TO_STRONG_PASSWORD
 # Dropbox OAuth (REQUIRED - get from https://www.dropbox.com/developers/apps)
 DROPBOX_APP_KEY=
 
-# URLs (pre-configured for photo.wangdake.de:22443)
-DROPBOX_REDIRECT_URI=https://photo.wangdake.de:22443/api/dropbox/callback
-FRONTEND_URL=https://photo.wangdake.de:22443
-CORS_ORIGIN=https://photo.wangdake.de:22443
+# URLs (pre-configured for photo.wangdake.de)
+DROPBOX_REDIRECT_URI=https://photo.wangdake.de/api/dropbox/callback
+FRONTEND_URL=https://photo.wangdake.de
+CORS_ORIGIN=https://photo.wangdake.de
 EOF
 
     chmod 600 .env.prod
@@ -101,23 +101,23 @@ echo -e "${YELLOW}[4/7] Setting up firewall rules...${NC}"
 
 if command -v ufw &> /dev/null; then
     echo "Detected UFW firewall"
-    read -p "Open ports 22080 and 22443? [y/N]: " OPEN_PORTS
+    read -p "Open ports 80 and 443? [y/N]: " OPEN_PORTS
     if [ "$OPEN_PORTS" = "y" ] || [ "$OPEN_PORTS" = "Y" ]; then
-        sudo ufw allow 22080/tcp
-        sudo ufw allow 22443/tcp
+        sudo ufw allow 80/tcp
+        sudo ufw allow 443/tcp
         echo -e "${GREEN}✓ Firewall rules added${NC}"
     fi
 elif command -v firewall-cmd &> /dev/null; then
     echo "Detected firewalld"
-    read -p "Open ports 22080 and 22443? [y/N]: " OPEN_PORTS
+    read -p "Open ports 80 and 443? [y/N]: " OPEN_PORTS
     if [ "$OPEN_PORTS" = "y" ] || [ "$OPEN_PORTS" = "Y" ]; then
-        sudo firewall-cmd --permanent --add-port=22080/tcp
-        sudo firewall-cmd --permanent --add-port=22443/tcp
+        sudo firewall-cmd --permanent --add-port=80/tcp
+        sudo firewall-cmd --permanent --add-port=443/tcp
         sudo firewall-cmd --reload
         echo -e "${GREEN}✓ Firewall rules added${NC}"
     fi
 else
-    echo -e "${YELLOW}⚠ No firewall detected. Make sure ports 22080 and 22443 are accessible.${NC}"
+    echo -e "${YELLOW}⚠ No firewall detected. Make sure ports 80 and 443 are accessible.${NC}"
 fi
 
 echo ""
@@ -173,7 +173,7 @@ echo ""
 echo "4. Configure Dropbox App:"
 echo "   - Go to https://www.dropbox.com/developers/apps"
 echo "   - Create new app with 'Scoped access' and 'Full Dropbox'"
-echo "   - Add redirect URI: https://photo.wangdake.de:22443/api/dropbox/callback"
+echo "   - Add redirect URI: https://photo.wangdake.de/api/dropbox/callback"
 echo "   - Copy App key to .env.prod DROPBOX_APP_KEY"
 echo ""
 echo "5. Trigger deployment from GitHub Actions!"

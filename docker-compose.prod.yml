@@ -1,7 +1,7 @@
 # =============================================================================
 # Photo-Processor Production Docker Compose (GHCR Version)
 # Domain: photo.wangdake.de
-# Ports: 22080 (HTTP), 22443 (HTTPS), 22000 (API internal)
+# Ports: 80 (HTTP), 443 (HTTPS), 22000 (API internal)
 #
 # This file is used for deployment with pre-built images from GHCR.
 # For local development, use docker-compose.yml instead.
@@ -29,9 +29,9 @@ services:
       - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
       - DROPBOX_APP_KEY=${DROPBOX_APP_KEY}
-      - DROPBOX_REDIRECT_URI=https://photo.wangdake.de:22443/api/dropbox/callback
-      - FRONTEND_URL=https://photo.wangdake.de:22443
-      - CORS_ORIGIN=https://photo.wangdake.de:22443
+      - DROPBOX_REDIRECT_URI=https://photo.wangdake.de/api/dropbox/callback
+      - FRONTEND_URL=https://photo.wangdake.de
+      - CORS_ORIGIN=https://photo.wangdake.de
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:22000/health"]
       interval: 30s
@@ -40,15 +40,16 @@ services:
       start_period: 40s
     networks:
       - photo-net
-    # [H-2 FIX] Add resource limits (adjusted for single CPU server)
+    # Resource limits for 2-core 6GB server
+    # Playwright + Chromium needs sufficient memory
     deploy:
       resources:
         limits:
-          cpus: '0.8'
-          memory: 1G
+          cpus: '1.5'
+          memory: 4G
         reservations:
-          cpus: '0.25'
-          memory: 256M
+          cpus: '0.5'
+          memory: 512M
     logging:
       driver: "json-file"
       options:
@@ -63,8 +64,8 @@ services:
     container_name: photo-processor-web
     restart: unless-stopped
     ports:
-      - "22080:22080"
-      - "22443:22443"
+      - "80:80"
+      - "443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
@@ -74,7 +75,6 @@ services:
         condition: service_healthy
     networks:
       - photo-net
-    # [H-2 FIX] Add resource limits for web container (adjusted for single CPU server)
     deploy:
       resources:
         limits:
