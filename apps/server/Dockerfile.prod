@@ -10,7 +10,7 @@
 # ---------------------------------------------------------------------------
 # Stage 1: Build TypeScript on same platform as production (glibc)
 # ---------------------------------------------------------------------------
-FROM mcr.microsoft.com/playwright:v1.49.0-jammy AS builder
+FROM mcr.microsoft.com/playwright:v1.58.1-jammy AS builder
 
 WORKDIR /app
 
@@ -47,7 +47,7 @@ RUN yarn turbo run build --filter=@photo-processor/server
 # ---------------------------------------------------------------------------
 # Stage 2: Production image with pre-installed Playwright browsers
 # ---------------------------------------------------------------------------
-FROM mcr.microsoft.com/playwright:v1.49.0-jammy
+FROM mcr.microsoft.com/playwright:v1.58.1-jammy
 
 WORKDIR /app
 

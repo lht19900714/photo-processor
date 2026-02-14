@@ -19,7 +19,7 @@
     "dropbox": "^10.34.0",
     "hono": "^4.6.0",
     "jose": "^5.9.0",
-    "playwright": "^1.49.0",
+    "playwright": "1.58.1",
     "ws": "^8.18.0"
   },
   "devDependencies": {

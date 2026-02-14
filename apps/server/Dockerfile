@@ -26,7 +26,7 @@ COPY apps/server ./apps/server
 RUN yarn turbo run build --filter=@photo-processor/server
 
 # Production stage - use Playwright base image
-FROM mcr.microsoft.com/playwright:v1.49.0-jammy
+FROM mcr.microsoft.com/playwright:v1.58.1-jammy
 
 WORKDIR /app
 
